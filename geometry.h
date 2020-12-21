@@ -20,3 +20,5 @@ void count_ray_cast_intersection(float* p1, float* p2, float* q, int* counter);
 bool is_point_inside_polygon(float* points, int N, float* q);
 // points get mutated in this method, first M (return of the function) are convex hull
 int jarvis_march(float* points, int N);
+// sort vectors vector in CCW direction
+void sort_vec_by_angle(float* vs, int N);

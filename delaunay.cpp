@@ -263,7 +263,7 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 		}
 	}*/
 
-	float min_len_threshold = 0;
+	float min_len_threshold = 0.02;
 
 	float f[3];
 	f[0] = (rand() % 1000) / 1000.f;
@@ -279,9 +279,13 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 	};
 
 
-	PointSelectionOption point_selection_option = PointSelectionOption::Circumcenter;
+	PointSelectionOption point_selection_option = PointSelectionOption::Centeroid;
 	std::map<sorted_tri, std::vector<float>, sorted_tri_comparator> valid_vor_verts;
 	std::map<delaunay_tri_edge, std::pair<sorted_tri, sorted_tri>, delaunay_edge_comparator> valid_edges;
+	std::map<sorted_tri, sorted_tri, sorted_tri_comparator> vertex_aliases_map;
+	std::vector<std::pair<std::vector<float>, std::vector<sorted_tri>>> vertex_clusters;
+	std::map<sorted_tri, int, sorted_tri_comparator> in_cluster_map;
+
 	std::set<int> has_invalid_vert_set;
 	for (auto& u : edge_map) {
 		if (u.first.a > -1 && u.first.b > -1) {
@@ -498,57 +502,169 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 				c2[1] = cut[1];
 			}
 #endif
-			if (sqr_dist(c1, c2) > min_len_threshold * min_len_threshold) 
-			{
-				//sorted_tri st1(u.first.a, u.first.b, c);
-				//sorted_tri st2(u.first.a, u.first.b, d);
-				//valid_edges.insert({ u.first, {st1, st2} });
-				//valid_vor_verts.insert({ st1, {c1[0], c1[1]} });
-				//valid_vor_verts.insert({ st2, {c2[0], c2[1]} });
+			bool b1 = is_point_inside_polygon(border, K, c1);
+			bool b2 = is_point_inside_polygon(border, K, c2);
 
-				//printf("cd: %d %d\n", c, d);
-				if (c > -1 && d > -1) 
-				{
-					bool b1 = is_point_inside_polygon(border, K, c1);
-					bool b2 = is_point_inside_polygon(border, K, c2);
-					if (b1 && b2) 
-					{
-						sorted_tri st1(u.first.a, u.first.b, c);
-						sorted_tri st2(u.first.a, u.first.b, d);
+			if (0 || b1 && b2) {
+				if (0 || c > -1 && d > -1) {
+					sorted_tri st1(u.first.a, u.first.b, c);
+					sorted_tri st2(u.first.a, u.first.b, d);
+					float mlt2 = min_len_threshold * min_len_threshold;
+					if (sqr_dist(c1, c2) < mlt2) {
+						auto it1 = in_cluster_map.find(st1);
+						if (it1 != in_cluster_map.end()) {
+							auto it2 = in_cluster_map.find(st2);
+							if (it2 != in_cluster_map.end()) {
+								// merge 2 clusters
+								if (sqr_dist(vertex_clusters[it1->second].first.data(), vertex_clusters[it2->second].first.data()) < mlt2) {
+									float M1 = vertex_clusters[it1->second].second.size();
+									float M2 = vertex_clusters[it2->second].second.size();
+									vertex_clusters[it1->second].first[0] =
+										(vertex_clusters[it1->second].first[0] * M1 + vertex_clusters[it2->second].first[0] * M2) / (M1 + M2);
+									vertex_clusters[it1->second].first[1] =
+										(vertex_clusters[it1->second].first[1] * M1 + vertex_clusters[it2->second].first[1] * M2) / (M1 + M2);
+
+									for (auto& u : vertex_clusters[it2->second].second) {
+										in_cluster_map[u] = it1->second;
+										vertex_clusters[it1->second].second.push_back(u);
+									}
+									for (auto& u : vertex_clusters.back().second) {
+										in_cluster_map[u] = it2->second;
+									}
+									vertex_clusters[it2->second] = vertex_clusters.back();
+									vertex_clusters.erase(vertex_clusters.end() - 1);
+								}
+								else {
+									// just add as a valid edge
+									valid_edges.insert({ u.first, {st1, st2} });
+									valid_vor_verts.insert({ st1, {c1[0], c1[1]} });
+									valid_vor_verts.insert({ st2, {c2[0], c2[1]} });
+								}
+							}
+							else {
+								if (sqr_dist(vertex_clusters[it1->second].first.data(), c2) < mlt2) {
+									// add to the cluster 
+									float M = vertex_clusters[it1->second].second.size();
+									vertex_clusters[it1->second].first[0] =
+										(vertex_clusters[it1->second].first[0] * M + c2[0]) / (M + 1);
+									vertex_clusters[it1->second].first[1] =
+										(vertex_clusters[it1->second].first[1] * M + c2[1]) / (M + 1);
+									vertex_clusters[it1->second].second.push_back(st2);
+									in_cluster_map.insert({ st2, it1->second });
+								}
+								else {
+									// just add as a valid edge
+									valid_edges.insert({ u.first, {st1, st2} });
+									valid_vor_verts.insert({ st1, {c1[0], c1[1]} });
+									valid_vor_verts.insert({ st2, {c2[0], c2[1]} });
+								}
+							}
+						}
+						else {
+							auto it2 = in_cluster_map.find(st2);
+							if (it2 != in_cluster_map.end()) {
+								if (sqr_dist(vertex_clusters[it2->second].first.data(), c1) < mlt2) {
+									// add to the cluster 
+									float M = vertex_clusters[it2->second].second.size();
+									vertex_clusters[it2->second].first[0] =
+										(vertex_clusters[it2->second].first[0] * M + c1[0]) / (M + 1);
+									vertex_clusters[it2->second].first[1] =
+										(vertex_clusters[it2->second].first[1] * M + c1[1]) / (M + 1);
+									vertex_clusters[it2->second].second.push_back(st1);
+									in_cluster_map.insert({ st1, it2->second });
+								}
+								else {
+									// just add as a valid edge
+									valid_edges.insert({ u.first, {st1, st2} });
+									valid_vor_verts.insert({ st1, {c1[0], c1[1]} });
+									valid_vor_verts.insert({ st2, {c2[0], c2[1]} });
+								}
+							}
+							else {
+								int ind = -1;
+								float mind2 = 1e9;
+								float mid[2] = { (c1[0] + c2[0]) / 2, (c1[1] + c2[1]) / 2 };
+								for (int i = 0; i < vertex_clusters.size(); ++i) {
+									auto& u = vertex_clusters[i];
+									if (sqr_dist(mid, u.first.data()) < mind2) {
+										ind = i;
+										mind2 = sqr_dist(mid, u.first.data());
+									}
+								}
+								if (ind != -1 && mind2 < mlt2) {
+									float M = vertex_clusters[ind].second.size();
+									vertex_clusters[ind].first[0] = (vertex_clusters[ind].first[0] * M + c1[0] + c2[0]) / (M + 2);
+									vertex_clusters[ind].first[1] = (vertex_clusters[ind].first[1] * M + c1[1] + c2[1]) / (M + 2);
+									vertex_clusters[ind].second.push_back(st1);
+									vertex_clusters[ind].second.push_back(st2);
+									in_cluster_map.insert({ st1, ind });
+									in_cluster_map.insert({ st2, ind });
+								}
+								else {
+									// create a new cluster
+									vertex_clusters.push_back({ {(c1[0] + c2[0]) / 2, (c1[1] + c2[1]) / 2}, {st1, st2} });
+									in_cluster_map.insert({ st1, vertex_clusters.size() - 1 });
+									in_cluster_map.insert({ st2, vertex_clusters.size() - 1 });
+								}
+							}
+						}
+					}
+					else {
 						valid_edges.insert({ u.first, {st1, st2} });
 						valid_vor_verts.insert({ st1, {c1[0], c1[1]} });
 						valid_vor_verts.insert({ st2, {c2[0], c2[1]} });
 					}
-					else {
-						has_invalid_vert_set.insert(u.first.a);
-						has_invalid_vert_set.insert(u.first.b);
-					}
 				}
 				else {
-#if 1
 					has_invalid_vert_set.insert(u.first.a);
-					has_invalid_vert_set.insert(u.first.b);				
-#endif
+					has_invalid_vert_set.insert(u.first.b);
 				}
+			}
+			else {
+				has_invalid_vert_set.insert(u.first.a);
+				has_invalid_vert_set.insert(u.first.b);
 			}
 		}
 	}
 	
-	printf("has invalid vert:\n");
-	for (auto& u : has_invalid_vert_set) {
-		printf("%d\n", u);
+	printf("number of vertex clusters: %lld\n", vertex_clusters.size());
+	for (int i = 0; i < vertex_clusters.size(); ++i) {
+		auto& u = vertex_clusters[i];
+		int ind = 0;
+		valid_vor_verts[u.second[ind]] = u.first;
+		for (int j = 0; j < u.second.size(); ++j) {
+			if (j == ind) continue;
+			vertex_aliases_map[u.second[j]] = u.second[ind];
+		}
 	}
 
 	float min_len = 1000;
 	int start_ind;
 	std::vector<std::vector<int>> nbrdata(N);
 	for (auto& u : valid_edges) {
-		float* c1 = valid_vor_verts[u.second.first].data();
-		float* c2 = valid_vor_verts[u.second.second].data();
-		if (sqr_dist(c1, c2) < min_len) {
+		sorted_tri p1 = u.second.first;
+		sorted_tri p2 = u.second.second;
+		float* c1;
+		float* c2;
+
+		auto it = vertex_aliases_map.find(p1);
+		if (it == vertex_aliases_map.end()) {
+			c1 = valid_vor_verts[p1].data();
+		}
+		else {
+			c1 = valid_vor_verts[it->second].data();
+		}
+		it = vertex_aliases_map.find(p2);
+		if (it == vertex_aliases_map.end()) {
+			c2 = valid_vor_verts[p2].data();
+		}
+		else {
+			c2 =valid_vor_verts[it->second].data();
+		}
+
+		if (sqr_dist(c1, c2) < min_len * min_len) {
 			min_len = sqr_dist(c1, c2);
 		}
-		
 		if (has_invalid_vert_set.find(u.first.a) == has_invalid_vert_set.end() && has_invalid_vert_set.find(u.first.b) == has_invalid_vert_set.end()) {
 			start_ind = u.first.a;
 			nbrdata[u.first.a].push_back(u.first.b);
@@ -556,7 +672,7 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 		}
 		
 	}
-	printf("min len: %.9f\n", min_len);
+	printf("min len: %.9f\n", sqrt(min_len));
 	std::vector<bool> is_visited(N, false);
 	std::vector<int> cells;
 
@@ -582,131 +698,249 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 		}
 	}
 
-
-	float hfw = 0.0015;
+	float hfw = 0.00175;
 
 	if(0)
 	for (auto& u : valid_edges) {
-		float* c1 = valid_vor_verts[u.second.first].data();
-		float* c2 = valid_vor_verts[u.second.second].data();
+		sorted_tri p1 = u.second.first;
+		sorted_tri p2 = u.second.second;
+		float* c1;
+		float* c2;
+
+		auto it = vertex_aliases_map.find(p1);
+		if (it == vertex_aliases_map.end()) {
+			c1 = valid_vor_verts[p1].data();
+		}
+		else {
+			c1 = valid_vor_verts[it->second].data();
+		}
+		it = vertex_aliases_map.find(p2);
+		if (it == vertex_aliases_map.end()) {
+			c2 = valid_vor_verts[p2].data();
+		}
+		else {
+			c2 = valid_vor_verts[it->second].data();
+		}
 		
 		float v[2];
 		float vd = std::sqrt(sqr_dist(c1, c2));
-		if (vd == 0) continue;
+		//if (vd == 0) continue;
 		v[0] = hfw * (c2[1] - c1[1]) / vd;
 		v[1] = hfw * (c1[0] - c2[0]) / vd;
-		float v1[2] = { hfw / 2 * (c1[0] - c2[0]) / vd, hfw / 2 * (c1[1] - c2[1]) / vd };
+		float v1[2] = { (hfw/2.f) * (c1[0] - c2[0]) / vd, (hfw / 2.f) * (c1[1] - c2[1]) / vd };
 
-		vertices.push_back(c1[0] + v[0]);
-		vertices.push_back(c1[1] + v[1]);
-		vertices.push_back(c2[0] + v[0]);
-		vertices.push_back(c2[1] + v[1]);
-		vertices.push_back(c2[0] - v[0]);
-		vertices.push_back(c2[1] - v[1]);
+		if (0) {
+			vertices.push_back(c1[0] + v[0]);
+			vertices.push_back(c1[1] + v[1]);
+			vertices.push_back(c2[0] + v[0]);
+			vertices.push_back(c2[1] + v[1]);
+			vertices.push_back(c2[0] - v[0]);
+			vertices.push_back(c2[1] - v[1]);
 
-		vertices.push_back(c2[0] - v[0]);
-		vertices.push_back(c2[1] - v[1]);
-		vertices.push_back(c1[0] - v[0]);
-		vertices.push_back(c1[1] - v[1]);
-		vertices.push_back(c1[0] + v[0]);
-		vertices.push_back(c1[1] + v[1]);
+			vertices.push_back(c2[0] - v[0]);
+			vertices.push_back(c2[1] - v[1]);
+			vertices.push_back(c1[0] - v[0]);
+			vertices.push_back(c1[1] - v[1]);
+			vertices.push_back(c1[0] + v[0]);
+			vertices.push_back(c1[1] + v[1]);
+		}
+		else {
+			vertices.push_back(c1[0]);
+			vertices.push_back(c1[1]);
+			vertices.push_back(c2[0]);
+			vertices.push_back(c2[1]);
+
+			//vertices.push_back(c1[0]);
+			//vertices.push_back(c1[1]);
+			//vertices.push_back(c1[0] + v[0]);
+			//vertices.push_back(c1[1] + v[1]);
+
+			//vertices.push_back(c1[0]);
+			//vertices.push_back(c1[1]);
+			//vertices.push_back(c1[0] - v[0]);
+			//vertices.push_back(c1[1] - v[1]);
+
+			//vertices.push_back(c2[0]);
+			//vertices.push_back(c2[1]);
+			//vertices.push_back(c2[0] + v[0]);
+			//vertices.push_back(c2[1] + v[1]);
+
+			//vertices.push_back(c2[0]);
+			//vertices.push_back(c2[1]);
+			//vertices.push_back(c2[0] - v[0]);
+			//vertices.push_back(c2[1] - v[1]);
+		}
 	}
 	
 	std::map<sorted_tri, std::vector<sorted_tri>, sorted_tri_comparator> pmap;
 	for (auto& u : valid_edges) {
 		auto p1 = u.second.first;
 		auto p2 = u.second.second;
+
+		auto it2 = vertex_aliases_map.find(p1);
+		if (it2 != vertex_aliases_map.end()) {
+			p1 = it2->second;
+		}
+		it2 = vertex_aliases_map.find(p2);
+		if (it2 != vertex_aliases_map.end()) {
+			p2 = it2->second;
+		}
+
 		auto it = pmap.find(p1);
 		if (it == pmap.end()) {
-			pmap.insert(it, { p1, {u.second.second} });
+		
+			pmap.insert(it, { p1, {p2} });
 		}
 		else {
-			it->second.push_back(u.second.second);
+			it->second.push_back(p2);
 		}
 		it = pmap.find(p2);
 		if (it == pmap.end()) {
-			pmap.insert(it, { p2, {u.second.first} });
+			pmap.insert(it, { p2, {p1} });
 		}
 		else {
-			it->second.push_back(u.second.first);
+			it->second.push_back(p1);
 		}
 	}
 	if(1)
 	for (auto& u : pmap) {
 		float* center = valid_vor_verts[u.first].data();
-		int N = u.second.size();
-		std::vector<float> indices(N);
+		int M = u.second.size();
+		std::vector<float> indices(M);
 		std::vector<float> pos;
-		for (int i = 0; i < N; ++i) {
+		
+		for (int i = 0; i < M; ++i) {
 			indices[i] = i;
 			float* v = valid_vor_verts[u.second[i]].data();
-			float dx = v[0] - center[0];
-			float dy = v[1] - center[1];
-			float d = sqrt(dx * dx + dy * dy);
-			pos.push_back(dx / d + center[0]);
-			pos.push_back(dy / d + center[1]);
+			pos.push_back(v[0] - center[0]);
+			pos.push_back(v[1] - center[1]);
 		}
 		
 		// perform jarvis march 
-		if (N > 3) {
-			int ind = 0;
-			int M = 0;
-			float point_on_hull[2] = { pos[0], pos[1] };
-			for (int i = 1; i < N; ++i) {
-				if (pos[2 * i] < point_on_hull[0]) {
-					point_on_hull[0] = points[2 * i];
-					point_on_hull[1] = points[2 * i + 1];
-					ind = i;
-				}
-			}
+		if (M > 3) {
+			float o[] = { 0, 0 };
 
-			while (true) {
-				int j = indices[ind];
-				indices[ind] = indices[M];
-				indices[M] = j;
-				pos[2 * ind] = pos[2 * M];
-				pos[2 * ind + 1] = pos[2 * M + 1];
-				pos[2 * M] = point_on_hull[0];
-				pos[2 * M + 1] = point_on_hull[1];
-				++M;
-				ind = M;
-				for (int i = M; i < N; ++i) {
-					if (point_orientation(point_on_hull, &pos[2 * ind], &pos[2 * i]) < 0) {
-						ind = i;
+			// split points that lie on the left and right of the point[0]
+			int left_pos = 1;
+			int right_pos = M - 1;
+
+			while (left_pos <= right_pos) {
+				bool b1 = point_orientation(o, &pos[0], &pos[2 * left_pos]) > 0;
+				bool b2 = point_orientation(o, &pos[0], &pos[2 * right_pos]) <= 0;
+				if (b1 && b2) {
+					//swap
+					float x = pos[2 * left_pos];
+					float y = pos[2 * left_pos + 1];
+					pos[2 * left_pos] = pos[2 * right_pos];
+					pos[2 * left_pos + 1] = pos[2 * right_pos + 1];
+					pos[2 * right_pos] = x;
+					pos[2 * right_pos + 1] = y;
+
+					int t = indices[left_pos];
+					indices[left_pos] = indices[right_pos];
+					indices[right_pos] = t;
+
+					++left_pos;
+					--right_pos;
+
+				}
+				else {
+					if (!b1) {
+						++left_pos;
+					}
+					else {
+						--right_pos;
 					}
 				}
-				if (M == N || point_orientation(point_on_hull, &pos[2 * ind], &pos[0]) < 0) {
-					break;
+			}
+			//printf("left size: %d right size: %d\n", (left_pos - 1), (N - 1 - right_pos));
+			if (left_pos - 1 > 1) {
+				int next = 1;
+				while (next != left_pos) {
+					int ind = next;
+					for (int i = next + 1; i < left_pos; ++i) {
+						if (point_orientation(o, &pos[2 * ind], &pos[2 * i]) > 0) {
+							ind = i;
+						}
+					}
+					{
+						float x = pos[2 * next];
+						float y = pos[2 * next + 1];
+						pos[2 * next] = pos[2 * ind];
+						pos[2 * next + 1] = pos[2 * ind + 1];
+						pos[2 * ind] = x;
+						pos[2 * ind + 1] = y;
+
+						int t = indices[next];
+						indices[next] = indices[ind];
+						indices[ind] = t;
+					}
+					++next;
 				}
-				point_on_hull[0] = pos[2 * ind];
-				point_on_hull[1] = pos[2 * ind + 1];
+			}
+			if (M - 1 - right_pos > 1) {
+				int next = M - 1;
+				while (next != right_pos) {
+					int ind = next;
+					for (int i = next - 1; i > right_pos; --i) {
+						if (point_orientation(o, &pos[2 * ind], &pos[2 * i]) < 0) {
+							ind = i;
+						}
+					}
+					{
+						float x = pos[2 * next];
+						float y = pos[2 * next + 1];
+						pos[2 * next] = pos[2 * ind];
+						pos[2 * next + 1] = pos[2 * ind + 1];
+						pos[2 * ind] = x;
+						pos[2 * ind + 1] = y;
+
+						int t = indices[next];
+						indices[next] = indices[ind];
+						indices[ind] = t;
+					}
+					--next;
+				}
 			}
 
-			if (M != N) {
-				printf("jarvis march: smth is wrong ret: %d size: %d\n", M, N);
+			std::vector<sorted_tri> tmp(M);
+			for (int i = 0; i < M; ++i) {
+				tmp[i] = u.second[indices[i]];
 			}
+			u.second = tmp;
 		}
-
-		std::vector<sorted_tri> tmp(N);
-		for (int i = 0; i < N; ++i) {
-			tmp[i] = u.second[indices[i]];
-		}
-		u.second = tmp;
 	}
 
 	
 	auto get_bisector_vec_with_mag = [](float* p1, float* p2, float* p3, float hfw, float* out) {
-		float incenter[2];
+		/*float incenter[2];
 		get_tri_incenter(p1, p2, p3, incenter);
 		float a = sqrt(sqr_dist(p1, p2));
 		float b = sqrt(sqr_dist(p1, p3));
 		float c = sqrt(sqr_dist(p2, p3));
 		float s = (a + b + c) / 2;
 		float in_r = sqrt((s - a) * (s - b) * (s - c) / s);
-		float d = sqrt(sqr_dist(incenter, p1));
 		float mag = hfw / in_r;
+		if (mag < 0.001) {
+			printf("too small mag\n");
+		}
+
 		out[0] = mag * (incenter[0] - p1[0]);
-		out[1] = mag * (incenter[1] - p1[1]);
+		out[1] = mag * (incenter[1] - p1[1]);*/
+
+		float a = sqrt(sqr_dist(p2, p3));
+		float b = sqrt(sqr_dist(p1, p3));
+		float c = sqrt(sqr_dist(p1, p2));
+		float av[2] = { p2[0] - p3[0], p2[1] - p3[1] };
+		float bv[2] = { p1[0] - p3[0], p1[1] - p3[1] };
+		float d = b / (b + c);
+		float p[2] = { av[0] * d + p3[0], av[1] * d + p3[1] };
+		
+		float h = dot_prd(av, bv) / (b + c);
+		h = sqrt(d * d * a * a - h * h);
+		float mag = hfw / h;
+		out[0] = mag * (p[0] - p1[0]);
+		out[1] = mag * (p[1] - p1[1]);
 	};
 	auto get_vs = [&get_bisector_vec_with_mag](float* p1, float* p2, float* p1prev, float* p1next, float hfw, float* u1, float* u2) {
 		if (p1prev == nullptr) {
@@ -722,6 +956,20 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 		}
 		if (p1next == nullptr) {
 			// only 2 edge, N = 2
+			float q1[2] = { p1[0] - p1prev[0], p1[1] - p1prev[1] };
+			float q2[2] = { p2[0] - p1[0], p2[1] - p1[1] };
+			float d = dot_prd(q1, q2);
+			float th = 0.99;
+			if (d * d >  th*th * sqr_len(q1) * sqr_len(q2)) {
+				u1[0] = p1[1] - p2[1];
+				u1[1] = p2[0] - p1[0];
+				float d = sqrt(sqr_len(u1));
+				u1[0] *= hfw / d;
+				u1[1] *= hfw / d;
+				u2[0] = -u1[0];
+				u2[1] = -u1[1];
+				return;
+			}
 			get_bisector_vec_with_mag(p1, p1prev, p2, hfw, u1);
 			u2[0] = -u1[0];
 			u2[1] = -u1[1];
@@ -756,29 +1004,11 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 		float* oo = valid_vor_verts[u.first].data();
 		float* pp = oo;
 		auto& nlist = u.second;
-		int N = nlist.size();
-		for (int i = 0; i < N; ++i) {
-#if 0
-			bool skip_edge = false;
-			for (int j = 0; j < 2 && !skip_edge; ++j) {
-				for (int k = j + 1; k < 3 && !skip_edge; ++k) {
-					for (int l = 0; l < 2 && !skip_edge; ++l) {
-						for (int m = l + 1; m < 3; ++m) {
-							if (u.first.a[j] == nlist[i].a[l] && u.first.a[k] == nlist[i].a[m]) {
-								if (has_invalid_vert_set.find(u.first.a[3 - j - k]) == has_invalid_vert_set.end() &&
-									has_invalid_vert_set.find(nlist[i].a[3 - l - m]) != has_invalid_vert_set.end()) {
-									printf("(%d, %d)\n", u.first.a[3 - j - k], nlist[i].a[3 - l - m]);
-									skip_edge = true;
-									break;
-								}
-							}
-						}
-					}
-				}
+		int M1 = nlist.size();
+		for (int i = 0; i < M1; ++i) {
+			if (u.first.a[0] == nlist[i].a[0] && u.first.a[1] == nlist[i].a[1] && u.first.a[2] == nlist[i].a[2]) {
+				printf("smth is wrong again\n");
 			}
-			if (skip_edge) continue;
-#endif
-
 			stp.set(u.first, nlist[i]);
 			auto it = done_set.find(stp);
 			if (it != done_set.end()) {
@@ -789,47 +1019,51 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 			float* tt = valid_vor_verts[nlist[i]].data();
 			float dx = pp[0] - tt[0];
 			float dy = pp[1] - tt[1];
-			if(dx*dx + dy*dy > 0) 
+			//if(dx*dx + dy*dy > 0) 
 			{
 				float u1[2] = {0, 0};
 				float u2[2] = {0, 0};
 
-				if (N == 1) {
+				if (M1 == 1) {
 					get_vs(pp, tt, nullptr, nullptr, hfw, u1, u2);
 				}
-				else if (N == 2) {
-					get_vs(pp, tt, valid_vor_verts[nlist[(i - 1 + N) % N]].data(), nullptr, hfw, u1, u2);
+				else if (M1 == 2) {
+					get_vs(pp, tt, valid_vor_verts[nlist[(i - 1 + M1) % M1]].data(), nullptr, hfw, u1, u2);
 				}
 				else{
-					get_vs(pp, tt, valid_vor_verts[nlist[(i - 1 + N) % N]].data(), valid_vor_verts[nlist[(i + 1) % N]].data(), hfw, u1, u2);
+					get_vs(pp, tt, valid_vor_verts[nlist[(i - 1 + M1) % M1]].data(), valid_vor_verts[nlist[(i + 1) % M1]].data(), hfw, u1, u2);
 				}
 
 				auto& mlist = pmap[nlist[i]];
-				int M = mlist.size();
-				for (int j = 0; j < M; ++j) {
+				int M2 = mlist.size();
+				for (int j = 0; j < M2; ++j) {
 					if (u.first.a[0] == mlist[j].a[0] && u.first.a[1] == mlist[j].a[1] && u.first.a[2] == mlist[j].a[2]) {
 						float v1[2] = {0, 0};
 						float v2[2] = {0, 0};
 
-						if (M == 1) {
+						if (M2 == 1) {
 							get_vs(tt, pp, nullptr, nullptr, hfw, v1, v2);
 						}
-						else if (M == 2) {
-							get_vs(tt, pp, valid_vor_verts[mlist[(j - 1 + M) % M]].data(), nullptr, hfw, v1, v2);
+						else if (M2 == 2) {
+							get_vs(tt, pp, valid_vor_verts[mlist[(j - 1 + M2) % M2]].data(), nullptr, hfw, v1, v2);
 						}
 						else {
-							get_vs(tt, pp, valid_vor_verts[mlist[(j - 1 + M) % M]].data(), valid_vor_verts[mlist[(j + 1) % M]].data(), hfw, v1, v2);
+							get_vs(tt, pp, valid_vor_verts[mlist[(j - 1 + M2) % M2]].data(), valid_vor_verts[mlist[(j + 1) % M2]].data(), hfw, v1, v2);
 						}
 
 						float l1[2] = { pp[0] + u1[0], pp[1] + u1[1] };
 						float l2[2] = { tt[0] + v1[0], tt[1] + v1[1] };
-						float* w1 = v1, * w2 = v2;
+						float l3[2] = { pp[0] + u2[0], pp[1] + u2[1] };
+						float l4[2] = { tt[0] + v2[0], tt[1] + v2[1] };
+						float* w1 = v1, *w2 = v2;
 						float res[2];
-						if (line_seg_and_seg_intesection(l1, l2, pp, tt, res)) {
+						if (line_seg_and_seg_intesection(l1, l2, l3, l4, res)) {
 							w1 = v2;
 							w2 = v1;
 						}
-						
+						if (sqr_dist(pp, tt) < 0.00001) {
+							printf("yes\n");
+						}
 						//printf("(%.3f, %.3f), (%.3f, %.3f), (%.3f, %.3f), (%.3f, %.3f)\n", 
 						//	1e4 * u1[0], 1e4 * u1[1], 1e4 * u2[0], 1e4 * u2[1], 1e4 * w1[0], 1e4 * w1[1], 1e4 * w2[0], 1e4* w2[1]);
 						if (1) {
@@ -860,31 +1094,98 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 							vertices.push_back(pp[1] + u2[1]);
 							vertices.push_back(pp[0]);
 							vertices.push_back(pp[1]);
-						}else {
-							/*vertices.push_back(pp.first);
-							vertices.push_back(pp.second);
-							vertices.push_back(tt.first);
-							vertices.push_back(tt.second);
-							
-							vertices.push_back(pp.first);
-							vertices.push_back(pp.second);
-							vertices.push_back(pp.first + u1[0]);
-							vertices.push_back(pp.second + u1[1]);
+						}else if(0) {
+							vertices.push_back(pp[0]);
+							vertices.push_back(pp[1]);
+							vertices.push_back(tt[0]);
+							vertices.push_back(tt[1]);
 
-							vertices.push_back(tt.first);
-							vertices.push_back(tt.second);
-							vertices.push_back(tt.first + w1[0]);
-							vertices.push_back(tt.second + w1[1]);
+							vertices.push_back(pp[0] + u1[0]);
+							vertices.push_back(pp[1] + u1[1]);
+							vertices.push_back(tt[0] + w1[0]);
+							vertices.push_back(tt[1] + w1[1]);
 							
-							vertices.push_back(pp.first);
-							vertices.push_back(pp.second);
-							vertices.push_back(pp.first + u2[0]);
-							vertices.push_back(pp.second + u2[1]);
+							vertices.push_back(tt[0] + w1[0]);
+							vertices.push_back(tt[1] + w1[1]);
+							vertices.push_back(tt[0]);
+							vertices.push_back(tt[1]);
 
-							vertices.push_back(tt.first);
-							vertices.push_back(tt.second);
-							vertices.push_back(tt.first + w2[0]);
-							vertices.push_back(tt.second + w2[1]);*/
+							vertices.push_back(tt[0]);
+							vertices.push_back(tt[1]);
+							vertices.push_back(pp[0] + u1[0]);
+							vertices.push_back(pp[1] + u1[1]);
+
+							vertices.push_back(tt[0]);
+							vertices.push_back(tt[1]);
+							vertices.push_back(pp[0]);
+							vertices.push_back(pp[1]);
+
+							vertices.push_back(pp[0]);
+							vertices.push_back(pp[1]);
+							vertices.push_back(pp[0] + u1[0]);
+							vertices.push_back(pp[1] + u1[1]);
+
+							vertices.push_back(pp[0] + u1[0]);
+							vertices.push_back(pp[1] + u1[1]);
+							vertices.push_back(tt[0]);
+							vertices.push_back(tt[1]);
+
+							
+							vertices.push_back(tt[0]);
+							vertices.push_back(tt[1]);
+							vertices.push_back(tt[0] + w2[0]);
+							vertices.push_back(tt[1] + w2[1]);
+
+							vertices.push_back(tt[0] + w2[0]);
+							vertices.push_back(tt[1] + w2[1]);
+							vertices.push_back(pp[0]);
+							vertices.push_back(pp[1]);
+
+							vertices.push_back(pp[0]);
+							vertices.push_back(pp[1]);
+							vertices.push_back(tt[0]);
+							vertices.push_back(tt[1]);
+
+							vertices.push_back(tt[0] + w2[0]);
+							vertices.push_back(tt[1] + w2[1]);
+							vertices.push_back(pp[0] + u2[0]);
+							vertices.push_back(pp[1] + u2[1]);
+
+							vertices.push_back(pp[0] + u2[0]);
+							vertices.push_back(pp[1] + u2[1]);
+							vertices.push_back(pp[0]);
+							vertices.push_back(pp[1]);
+
+							vertices.push_back(pp[0]);
+							vertices.push_back(pp[1]);
+							vertices.push_back(tt[0] + w2[0]);
+							vertices.push_back(tt[1] + w2[1]);
+						}
+						else {
+							vertices.push_back(pp[0]);
+							vertices.push_back(pp[1]);
+							vertices.push_back(tt[0]);
+							vertices.push_back(tt[1]);
+
+							vertices.push_back(pp[0]);
+							vertices.push_back(pp[1]);
+							vertices.push_back(pp[0] + u1[0]);
+							vertices.push_back(pp[1] + u1[1]);
+							
+							vertices.push_back(pp[0]);
+							vertices.push_back(pp[1]);
+							vertices.push_back(pp[0] + u2[0]);
+							vertices.push_back(pp[1] + u2[1]);
+
+							vertices.push_back(tt[0]);
+							vertices.push_back(tt[1]);
+							vertices.push_back(tt[0] + w1[0]);
+							vertices.push_back(tt[1] + w1[1]);
+
+							vertices.push_back(tt[0]);
+							vertices.push_back(tt[1]);
+							vertices.push_back(tt[0] + w2[0]);
+							vertices.push_back(tt[1] + w2[1]);
 						}
 						break;
 					}

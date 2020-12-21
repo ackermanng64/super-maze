@@ -218,3 +218,79 @@ int jarvis_march(float* points, int N) {
 	}
 	return M;
 }
+void sort_vec_by_angle(float* vs, int N) {
+	if (N < 4) {
+		return;
+	}
+	float o[] = { 0, 0 };
+	
+	// split points that lie on the left and right of the point[0]
+	int left_pos = 1;
+	int right_pos = N-1;
+
+	while (left_pos <= right_pos) {
+		bool b1 = point_orientation(o, &vs[0], &vs[2 * left_pos]) > 0;
+		bool b2 = point_orientation(o, &vs[0], &vs[2 * right_pos]) <= 0;
+		if (b1 && b2) {
+			//swap
+			float x = vs[2 * left_pos];
+			float y = vs[2 * left_pos + 1];
+			vs[2 * left_pos] = vs[2 * right_pos];
+			vs[2 * left_pos + 1] = vs[2 * right_pos + 1];
+			vs[2 * right_pos] = x;
+			vs[2 * right_pos + 1] = y;
+			++left_pos;
+			--right_pos;
+			
+		}
+		else {
+			if (!b1) {
+				++left_pos;
+			}
+			else {
+				--right_pos;
+			}
+		}
+	}
+	//printf("left size: %d right size: %d\n", (left_pos - 1), (N - 1 - right_pos));
+	if (left_pos - 1 > 1) {
+		int next = 1;
+		while (next != left_pos) {
+			int ind = next;
+			for (int i = next + 1; i < left_pos; ++i) {
+				if (point_orientation(o, &vs[2 * ind], &vs[2 * i]) > 0) {
+					ind = i;
+				}
+			}
+			{
+				float x = vs[2 * next];
+				float y = vs[2 * next + 1];
+				vs[2 * next] = vs[2 * ind];
+				vs[2 * next + 1] = vs[2 * ind + 1];
+				vs[2 * ind] = x;
+				vs[2 * ind + 1] = y;
+			}
+			++next;
+		}
+	}
+	if (N - 1 - right_pos > 1) {
+		int next = N - 1;
+		while (next != right_pos) {
+			int ind = next;
+			for (int i = next - 1; i > right_pos; --i) {
+				if (point_orientation(o, &vs[2 * ind], &vs[2 * i]) < 0) {
+					ind = i;
+				}
+			}
+			{
+				float x = vs[2 * next];
+				float y = vs[2 * next + 1];
+				vs[2 * next] = vs[2 * ind];
+				vs[2 * next + 1] = vs[2 * ind + 1];
+				vs[2 * ind] = x;
+				vs[2 * ind + 1] = y;
+			}
+			--next;
+		}
+	}
+}

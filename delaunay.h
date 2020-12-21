@@ -14,6 +14,7 @@ struct sorted_tri {
 		set(a0, a1, a2);
 	}
 	void set(int a0, int a1, int a2) {
+
 		a[0] = a0;
 		a[1] = a1;
 		a[2] = a2;

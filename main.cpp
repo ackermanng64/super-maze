@@ -105,7 +105,7 @@ vector<float> test_delaunay3(vector<sf::Vertex>& triangle_vertices) {
         sites.push_back((rand() % 2560) / 2559.f);
     }
 
-    auto pg = poission_disc_sampling(1, 1, 0.035);
+    auto pg = poission_disc_sampling(1, 1, 0.03);
     if(1)
     for (auto& u : pg) {
         for (auto& v : u) {
@@ -115,14 +115,15 @@ vector<float> test_delaunay3(vector<sf::Vertex>& triangle_vertices) {
             }
         }
     }
-    /*for (int i = 0; i < 10; ++i) {
+    if(0)
+    for (int i = 0; i < 10; ++i) {
         for (int j = 0; j < 10; ++j) {
-            float x = i / 10.f;
-            float y = j / 10.f;
+            float x = i / 10.f + 0.03f;
+            float y = j / 10.f + 0.03;
             sites.push_back(x);
             sites.push_back(y);
         }
-    }*/
+    }
     if(0) sites = {
         0.28, 0.61,
         0.33, 0.39,
@@ -163,17 +164,19 @@ int main()
         1606805427,
         1607858997,
         1607859289,
-        1607944581 // border cull bug with circumcenter
+        1607944581, // border cull bug with circumcenter
+        1608274936, // render problem -almost solved
+        1608464112, // render problem2
     };
     time_t seed = time(NULL);
-    srand(1608274936);
+    srand(1608531745);
     printf("seed: %ld\n", seed);
     sf::ContextSettings settings;
     settings.antialiasingLevel = 8;
-    int window_width = 900;
-    int window_height = 900;
-    int hmargin = 100;
-    int vmargin = 100;
+    int window_width = 1000;
+    int window_height = 1000;
+    int hmargin = 10;
+    int vmargin = 10;
     sf::RenderWindow window(sf::VideoMode(window_width, window_height), "voronoi", sf::Style::Default, settings);
     sf::CircleShape shape(5);
     vector<sf::Vertex> triangles_vertices;
