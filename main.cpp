@@ -169,7 +169,7 @@ int main()
         1608464112, // render problem2
     };
     time_t seed = time(NULL);
-    srand(1608531745);
+    srand(seed);
     printf("seed: %ld\n", seed);
     sf::ContextSettings settings;
     settings.antialiasingLevel = 8;
@@ -184,7 +184,7 @@ int main()
     
     vector<float> cull_polygon1 = { 0.3, 0.3, 0.6, 0.6, 0.45, 0.75 };
     //vector<float> cull_polygon2 = { 0.3, 0.3, 0.6, 0.6, 0.45, 0.75, 0.12, 0.75, 0.07, 0.56, 0.24, 0.49 };
-    vector<float> cull_polygon3 = 
+    vector<float> cull_polygon5 = 
     { 
         0.2, 0.2, 
         0.28, 0.26, 
@@ -195,7 +195,7 @@ int main()
         0.58, 0.64,
         0.18, 0.66
     };
-    vector<float> cull_polygon4 =
+    vector<float> cull_polygon3 =
     {
         0.02, 0.02,
         0.98, 0.02,
@@ -208,6 +208,24 @@ int main()
         1, 0,
         1, 1,
         0, 1
+    };
+    vector<float> cull_polygon2 =
+    {
+        0.12, 0.11,
+        0.39, 0.07,
+        0.48, 0.29,
+        0.61, 0.52,
+        0.59, 0.74,
+        0.44, 0.89,
+        0.22, 0.89,
+        0.34, 0.75,
+        0.44, 0.62,
+        0.27, 0.57,
+        0.12, 0.61,
+        0.09, 0.45,
+        0.23, 0.4,
+        0.34, 0.31,
+        0.24, 0.2
     };
     vector<sf::Vertex> cull_polygon_verts; 
     {
