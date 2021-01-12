@@ -265,7 +265,7 @@ int main()
     vector<sf::Vertex> voronoi_edges;
     
     vector<float> cull_polygon1 = { 0.3, 0.3, 0.6, 0.6, 0.45, 0.75 };
-    //vector<float> cull_polygon2 = { 0.3, 0.3, 0.6, 0.6, 0.45, 0.75, 0.12, 0.75, 0.07, 0.56, 0.24, 0.49 };
+    //vector<float> cull_polygn2 = { 0.3, 0.3, 0.6, 0.6, 0.45, 0.75, 0.12, 0.75, 0.07, 0.56, 0.24, 0.49 };
     vector<float> cull_polygon5 = 
     { 
         0.2, 0.2, 
@@ -418,7 +418,11 @@ int main()
     const int max_depth = 3;
     std::map<int, int> bfs_prev_map;
     std::queue<int> bfs_queue;
-  
+
+    for (auto& u : nbrdata[start_ind]) {
+        printf("%d\n", u);
+    }
+
     auto set_path_to_nbrs = [&]() {
         int depth = 0;
         bfs_prev_map.clear();
@@ -497,6 +501,10 @@ int main()
     };
     set_path_to_nbrs();
 
+    int move_target;
+    float move_t;
+    bool is_target_reached = true;
+
     while (window.isOpen())
     {
         sf::Event event;
@@ -518,7 +526,7 @@ int main()
                     display_cull_polygon = !display_cull_polygon;
                 }
             }
-            if (event.type == sf::Event::MouseButtonPressed) {
+            if (event.type == sf::Event::MouseButtonPressed && is_target_reached) {
                 if (event.mouseButton.button == sf::Mouse::Left) {
                     is_mouse_left_held = true;
                     mouse_press_pos[0] = event.mouseButton.x;
@@ -551,10 +559,28 @@ int main()
                             }
                         }
                         if (counter % 2 == 1) {
-                            start_ind = u.first;
-                            start_pos[0] = sites[2 * start_ind];
-                            start_pos[1] = sites[2 * start_ind + 1];
-                            set_path_to_nbrs();
+                            //start_ind = u.first;
+                            //start_pos[0] = sites[2 * start_ind];
+                            //start_pos[1] = sites[2 * start_ind + 1];
+                            //set_path_to_nbrs();
+                            move_t = 0;
+                            move_target = u.first;
+                            is_target_reached = false;
+                            
+                            int prev = u.first;
+                            int next = bfs_prev_map[prev];
+                            while (next != start_ind) {
+                                prev = next;
+                                next = bfs_prev_map[next];
+                            }
+                            
+                            for (int i = 0; i < pld.others.size(); ++i) {
+                                if (prev == pld.others[i]) {
+                                    pld.seg_ind = i;
+                                    break;
+                                }
+                            }
+                            
                             break;
                         }
                     }
@@ -569,6 +595,38 @@ int main()
             if (event.type == sf::Event::MouseMoved && is_mouse_left_held)
             {
                 
+            }
+        }
+
+        if (!is_target_reached) {
+            if (move_t >= 1) {
+                start_ind = pld.others[pld.seg_ind];
+                set_path_to_nbrs();
+                if (start_ind == move_target) {
+                    is_target_reached = true;
+                }
+                else {
+                    int prev = move_target;
+                    int next = bfs_prev_map[prev];
+                    while (next != start_ind) {
+                        prev = next;
+                        next = bfs_prev_map[next];
+                    }
+
+                    for (int i = 0; i < pld.others.size(); ++i) {
+                        if (prev == pld.others[i]) {
+                            pld.seg_ind = i;
+                            break;
+                        }
+                    }
+                    move_t = 0;
+                }
+            }
+            else {
+                move_t += 0.005;
+                int other = pld.others[pld.seg_ind];
+                start_pos[0] = (sites[2 * other] - sites[2 * start_ind]) * move_t + sites[2 * start_ind];
+                start_pos[1] = (sites[2 * other + 1] - sites[2 * start_ind + 1]) * move_t + sites[2 * start_ind + 1];
             }
         }
 
