@@ -1,6 +1,7 @@
 #include <SFML/Graphics.hpp>
 #include <vector>
 #include <chrono>
+#include <queue>
 #include "geometry.h"
 #include "delaunay.h"
 #include "voronoi.h"
@@ -105,7 +106,7 @@ vector<float> test_delaunay3(vector<sf::Vertex>& triangle_vertices) {
         sites.push_back((rand() % 2560) / 2559.f);
     }
 
-    auto pg = poission_disc_sampling(1, 1, 0.03);
+    auto pg = poission_disc_sampling(1, 1, 0.02);
     if(1)
     for (auto& u : pg) {
         for (auto& v : u) {
@@ -139,14 +140,22 @@ vector<float> test_delaunay3(vector<sf::Vertex>& triangle_vertices) {
     return sites;
 }
 
-void test_voronoi1(vector<float>& sites, vector<sf::Vertex>& edges, vector<float>& border) {
+void test_voronoi1(vector<float>& sites, vector<sf::Vertex>& edges, vector<float>& border,
+    std::map<sorted_tri, std::vector<float>, sorted_tri_comparator>& valid_vor_verts,
+    std::vector<std::vector<sorted_tri_pair>>& site_polygon,
+    std::vector<std::vector<int>>& nbrdata,
+    std::map<delaunay_tri_edge, std::pair<sorted_tri, sorted_tri>, delaunay_edge_comparator>& valid_edge,
+    std::set<sorted_tri_pair, sorted_tri_pair_comparator>& removed_n_edges,
+    int& start_ind,
+    float start_pos[2]) { 
     vector<float> vertices;
     auto start = std::chrono::steady_clock::now();
-    t_voronoi(sites.data(), sites.size() / 2, vertices, border.data(), border.size() / 2);
+    t_voronoi(  sites.data(), sites.size() / 2, vertices, border.data(), border.size() / 2, valid_vor_verts, site_polygon, nbrdata,
+                valid_edge, removed_n_edges, start_ind, start_pos);
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::milli> elapsed = end - start;
     printf("bw2: %lfms\n", elapsed.count());
-
+    printf("site count: %lld\n", (sites.size() / 2));
     sf::Vertex v;
     v.color = sf::Color::White;
     for (int i = 0; i < vertices.size(); i += 2) {
@@ -156,6 +165,79 @@ void test_voronoi1(vector<float>& sites, vector<sf::Vertex>& edges, vector<float
     }
     printf("triangles count: %lld\n", (edges.size() / 3));
 }
+struct st_pn {
+    sorted_tri prev;
+    sorted_tri next;
+    st_pn() {
+        prev = next = sorted_tri();
+    }
+    st_pn(sorted_tri p, sorted_tri n) {
+        prev = p;
+        next = n;
+    }
+};
+void f(int* p) {
+    int* q = p;
+    printf("%p %p\n", p, q);
+}
+void t_voronoi_post_process(std::map<sorted_tri, std::vector<float>, sorted_tri_comparator>& valid_vor_verts, float start_pos[2],
+                            std::vector<std::vector<sorted_tri_pair>>& site_polygon, 
+                            std::vector<std::vector<sorted_tri>>& site_sorted_polygon,
+                            float mmx[2], float mmy[2], float width, float height, float hmargin, float vmargin) {
+
+    float max_size = fmaxf(mmx[1] - mmx[0], mmy[1] - mmy[0]);
+    for (auto& u : valid_vor_verts) {
+        u.second[0] = (width - 2 * hmargin) * (u.second[0] - mmx[0]) / (mmx[1] - mmx[0]) + hmargin;
+        u.second[1] = (height - 2 * vmargin) * (u.second[1] - mmy[0]) / (mmy[1] - mmy[0]) + vmargin;
+        u.second[1] = height - u.second[1];
+    }
+
+    start_pos[0] = (width - 2 * hmargin) * (start_pos[0]  - mmx[0]) / (mmx[1] - mmx[0]) + hmargin;
+    start_pos[1] = (height - 2 * vmargin) * (start_pos[1] - mmy[0]) / (mmy[1] - mmy[0]) + vmargin;
+    start_pos[1] = height - start_pos[1];
+
+    // sort edges
+   
+    site_sorted_polygon.resize(site_polygon.size());
+    for (int i = 0; i < site_polygon.size(); ++i) {        
+        auto u = site_polygon[i];
+
+        if (u.size() == 0) continue;
+        int size = u.size();
+
+        auto& v = site_sorted_polygon[i];
+        std::map<sorted_tri, std::vector<sorted_tri>, sorted_tri_comparator> nmap;
+        std::set<sorted_tri, sorted_tri_comparator> visited_set;
+        for (auto& v : u) {
+            nmap[v.st1].push_back(v.st2);
+            nmap[v.st2].push_back(v.st1);
+        }
+
+        auto next = u[0].st1;
+        visited_set.insert(next);
+        v.push_back(next);
+
+        while (visited_set.size() != u.size()) {
+            auto& arr = nmap[next];
+            if (visited_set.find(arr[0]) == visited_set.end()) {
+                visited_set.insert(arr[0]);
+                next = arr[0];
+
+            }
+            else if(visited_set.find(arr[1]) == visited_set.end()) {
+                visited_set.insert(arr[1]);
+                next = arr[1];
+            }
+            v.push_back(next);
+        }
+    }
+}
+struct player_location_data {
+    int seg_ind = 0;
+    float t;
+    std::vector<float> crossing_ts;
+    std::vector<int> others;
+};
 
 int main()
 {
@@ -169,7 +251,7 @@ int main()
         1608464112, // render problem2
     };
     time_t seed = time(NULL);
-    srand(seed);
+    srand(1608464112);
     printf("seed: %ld\n", seed);
     sf::ContextSettings settings;
     settings.antialiasingLevel = 8;
@@ -249,16 +331,25 @@ int main()
         u = sf::Color(rand() % 256, rand() % 256, rand() % 256);
     }
 
-    test_voronoi1(sites, voronoi_edges, cull_polygon);
+    std::map<sorted_tri, std::vector<float>, sorted_tri_comparator> valid_vor_verts;
+    std::vector<std::vector<sorted_tri_pair>> site_polygon;
+    std::vector<std::vector<int>> nbrdata;
+    std::map<delaunay_tri_edge, std::pair<sorted_tri, sorted_tri>, delaunay_edge_comparator> valid_edges;
+    std::set<sorted_tri_pair, sorted_tri_pair_comparator> removed_edges_set;
+    std::vector<std::vector<sorted_tri>> site_sorted_polygon;
+    int start_ind;
+    float start_pos[2];
+    test_voronoi1(sites, voronoi_edges, cull_polygon, valid_vor_verts, site_polygon, nbrdata, valid_edges, removed_edges_set, start_ind, start_pos);
     float mmx[2], mmy[2];
     get_min_max_pos(mmx, mmy, sites.data(), sites.size() / 2, 0.075f);
+    t_voronoi_post_process(valid_vor_verts, start_pos, site_polygon, site_sorted_polygon, mmx, mmy, window_width, window_height, hmargin, vmargin);
     rescale_pos(mmx, mmy, triangles_vertices, window_width, window_height, hmargin, vmargin);
     rescale_pos(mmx, mmy, sites.data(), sites.size() / 2, window_width, window_height, hmargin, vmargin);
     rescale_pos(mmx, mmy, voronoi_edges, window_width, window_height, hmargin, vmargin);
     rescale_pos(mmx, mmy, cull_polygon.data(), cull_polygon.size() / 2, window_width, window_height, hmargin, vmargin);
     rescale_pos(mmx, mmy, cull_polygon_verts, window_width, window_height, hmargin, vmargin);
 
-
+    printf("start_pos: (%f, %f)\n", start_pos[0], start_pos[1]);
     printf("%ld\n", voronoi_edges.size() / 2);
 
     sf::Font font;
@@ -274,6 +365,137 @@ int main()
     bool display_vor = true;
     bool display_sites = true;
     bool display_cull_polygon = true;
+
+    sf::ConvexShape cs;
+
+    std::vector<sf::Vertex> start_ind_polygon_data;
+    
+    for (auto& u : site_polygon[start_ind]) {
+        sf::Vertex v;
+        v.color = sf::Color::Red;
+        float* p1 = valid_vor_verts[u.st1].data();
+        v.position.x = p1[0];
+        v.position.y = p1[1];
+        start_ind_polygon_data.push_back(v);
+     
+        float* p2 = valid_vor_verts[u.st2].data();
+        v.position.x = p2[0];
+        v.position.y = p2[1];
+        start_ind_polygon_data.push_back(v);
+
+        //printf("(%d, %d, %d) (%d, %d, %d)\n", u.st1.a[0], u.st1.a[1], u.st1.a[2], u.st2.a[0], u.st2.a[1], u.st2.a[2]);
+    }
+
+    float area = 0;
+    float centroid[2] = { 0, 0 };
+    float cx = 0;
+    float cy = 0;
+
+    for (int i = 0; i < site_sorted_polygon[start_ind].size(); ++i) {
+        //printf("(%d, %d, %d)\n", site_sorted_polygon[start_ind][i].a[0], site_sorted_polygon[start_ind][i].a[1], site_sorted_polygon[start_ind][i].a[2]);
+        int j = (i + 1) % site_sorted_polygon[start_ind].size();
+        float* p1 = valid_vor_verts[site_sorted_polygon[start_ind][i]].data();
+        float* p2 = valid_vor_verts[site_sorted_polygon[start_ind][j]].data();
+
+        float s = p1[0] * p2[1] - p1[1] * p2[0];
+        area += s;
+        cx += (p1[0] + p2[0]) * s;
+        cy += (p1[1] + p2[1]) * s;
+    }
+    area /= 2;
+    cx /= (6 * area);
+    cy /= (6 * area);
+    centroid[0] = cx;
+    centroid[1] = cy;
+
+    player_location_data pld;
+    bool is_mouse_left_held = false;
+    float mouse_press_pos[2];
+    float displacement_vec[2];
+    std::vector<sf::Vertex> movement_path_line;
+    std::vector<sf::Vertex> path_to_nbrs_data;
+    
+    const int max_depth = 3;
+    std::map<int, int> bfs_prev_map;
+    std::queue<int> bfs_queue;
+  
+    auto set_path_to_nbrs = [&]() {
+        int depth = 0;
+        bfs_prev_map.clear();
+        while (!bfs_queue.empty()) {
+            bfs_queue.pop();
+        }
+
+        pld.seg_ind = -1;
+        pld.crossing_ts.clear();
+        pld.others.clear();
+
+        path_to_nbrs_data.clear();
+
+        bfs_prev_map.insert({ start_ind, -1 });
+        bfs_queue.push(start_ind);
+        int curr_count = 1;
+        int next_count = 0; 
+
+        while (!bfs_queue.empty()) {
+            int ind = bfs_queue.front();
+            bfs_queue.pop();
+            --curr_count;
+
+            for (int i = 0; i < nbrdata[ind].size(); ++i) {
+                int other = nbrdata[ind][i];
+                auto& pst = valid_edges[delaunay_tri_edge(ind, other)];
+                sorted_tri_pair stp(pst.first, pst.second);
+                sorted_tri& st1 = stp.st1;
+                sorted_tri& st2 = stp.st2;
+                float* p1 = valid_vor_verts[st1].data();
+                float* p2 = valid_vor_verts[st2].data();
+                if (removed_edges_set.find(stp) != removed_edges_set.end()) {
+                    if (bfs_prev_map.find(other) == bfs_prev_map.end()) {
+                        bfs_queue.push(other);
+                        bfs_prev_map.insert({ other, ind });
+                        ++next_count;
+                        
+                        if (ind == start_ind) {
+                            float* q1 = &sites[2 * ind];
+                            float* q2 = &sites[2 * other];
+                            float res[2];
+                            if (line_seg_and_seg_intesection(p1, p2, q1, q2, res)) {
+                                if (fabs(q1[0] - q2[0]) > fabs(q1[1] - q2[1])) {
+                                    pld.crossing_ts.push_back((res[0] - q1[0]) / (q2[0] - q1[0]));
+                                }
+                                else {
+                                    pld.crossing_ts.push_back((res[1] - q1[1]) / (q2[1] - q1[1]));
+                                }
+                            }
+                            pld.others.push_back(other);
+                        }
+
+                        sf::Vertex v;
+                        v.color = sf::Color::Red;
+
+                        v.position.x = sites[2 * ind];
+                        v.position.y = sites[2 * ind + 1];
+                        path_to_nbrs_data.push_back(v);
+                        v.position.x = sites[2 * other];
+                        v.position.y = sites[2 * other + 1];
+                        path_to_nbrs_data.push_back(v);
+
+                    }
+                }
+            }
+            
+            if (curr_count == 0) {
+                ++depth;
+                curr_count = next_count;
+                next_count = 0;
+            }
+            if (depth == max_depth) {
+                break;
+            }
+        }
+    };
+    set_path_to_nbrs();
 
     while (window.isOpen())
     {
@@ -296,6 +518,58 @@ int main()
                     display_cull_polygon = !display_cull_polygon;
                 }
             }
+            if (event.type == sf::Event::MouseButtonPressed) {
+                if (event.mouseButton.button == sf::Mouse::Left) {
+                    is_mouse_left_held = true;
+                    mouse_press_pos[0] = event.mouseButton.x;
+                    mouse_press_pos[1] = event.mouseButton.y;
+                    float x = mouse_press_pos[0];
+                    float y = mouse_press_pos[1];
+
+                    for (auto& u : bfs_prev_map) {
+                        if (u.first == start_ind) continue;
+
+                        int counter = 0;
+                        int i;
+                        float xinters;
+                        
+                        for (int i = 0, j; i < site_sorted_polygon[u.first].size(); ++i) {
+                            j = (i + 1 == site_sorted_polygon[u.first].size() ? 0 : i + 1);
+                            sorted_tri& st1 = site_sorted_polygon[u.first][i];
+                            sorted_tri& st2 = site_sorted_polygon[u.first][j];
+
+                            float* p1 = valid_vor_verts[st1].data();
+                            float* p2 = valid_vor_verts[st2].data();
+
+                            if (y > fmin(p1[1], p2[1]) && y <= fmax(p1[1], p2[1]) && x <= fmax(p1[0], p2[0])) {
+                                if (p1[1] != p2[1]) {
+                                    xinters = (y - p1[1]) * (p2[0] - p1[0]) / (p2[1] - p1[1]) + p1[0];
+                                    if (p1[0] == p2[0] || x <= xinters) {
+                                        ++counter;
+                                    }
+                                }
+                            }
+                        }
+                        if (counter % 2 == 1) {
+                            start_ind = u.first;
+                            start_pos[0] = sites[2 * start_ind];
+                            start_pos[1] = sites[2 * start_ind + 1];
+                            set_path_to_nbrs();
+                            break;
+                        }
+                    }
+                    
+                }
+            }
+            if (event.type == sf::Event::MouseButtonReleased) {
+                if (event.mouseButton.button == sf::Mouse::Left) {
+                    is_mouse_left_held = false;
+                }
+            }
+            if (event.type == sf::Event::MouseMoved && is_mouse_left_held)
+            {
+                
+            }
         }
 
         window.clear();
@@ -314,9 +588,12 @@ int main()
             shape.setPosition(sf::Vector2f(x - 5, y - 5));
             shape.setFillColor(site_colors[i/2]);
             window.draw(shape);
-            text.setPosition(x, y - 20);
-            text.setString(to_string(i/2));
-            window.draw(text);
+            //if (bfs_prev_map.find(i / 2) != bfs_prev_map.end()) 
+            {
+                text.setPosition(x, y - 20);
+                text.setString(to_string(i / 2));
+                window.draw(text);
+            }
         }
         for (int i = 0; i < cull_polygon.size() && display_cull_polygon; i += 2) {
             float x = cull_polygon[i];
@@ -328,8 +605,21 @@ int main()
             text.setString("B" + to_string(i / 2));
             window.draw(text);
         }
+
+        
+        {
+            shape.setPosition(sf::Vector2f(start_pos[0] - 5, start_pos[1] - 5));
+            shape.setFillColor(sf::Color::Red);
+            window.draw(shape);
+        }
+        {
+            window.draw(movement_path_line.data(), movement_path_line.size(), sf::Lines);
+        }
+        {
+            window.draw(path_to_nbrs_data.data(), path_to_nbrs_data.size(), sf::Lines);
+        }
+        
         window.display();
     }
-
     return 0;
 }

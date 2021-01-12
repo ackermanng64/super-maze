@@ -1,10 +1,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cmath>
-#include <map>
 #include <stack>
-#include <set>
-#include <unordered_set>
 #include "geometry.h"
 #include "delaunay.h"
 
@@ -104,7 +101,14 @@ std::vector<tri> bowyer_watson_triangualtion(float* points, int N) {
 
 sorted_tri_comparator sorted_tri_pair::stc;
 
-void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border, int K) {
+void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border, int K,
+	std::map<sorted_tri, std::vector<float>, sorted_tri_comparator>& valid_vor_verts,
+	std::vector<std::vector<sorted_tri_pair>>& site_polygon,
+	std::vector<std::vector<int>>& nbrdata,
+	std::map<delaunay_tri_edge, std::pair<sorted_tri, sorted_tri>, delaunay_edge_comparator>& valid_edges,
+	std::set<sorted_tri_pair, sorted_tri_pair_comparator>& removed_edges_set,
+	int& start_ind,
+	float start_pos[2]) {
 	float mmx[2];
 	float mmy[2];
 	get_min_max_pos(mmx, mmy, points, N, 0);
@@ -269,9 +273,9 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 		RandomInside
 	};
 
-	PointSelectionOption point_selection_option = PointSelectionOption::Centeroid;
-	std::map<sorted_tri, std::vector<float>, sorted_tri_comparator> valid_vor_verts;
-	std::map<delaunay_tri_edge, std::pair<sorted_tri, sorted_tri>, delaunay_edge_comparator> valid_edges;
+	PointSelectionOption point_selection_option = PointSelectionOption::MidNinePointCenterCircumcenter;
+	//std::map<sorted_tri, std::vector<float>, sorted_tri_comparator> valid_vor_verts;
+	//std::map<delaunay_tri_edge, std::pair<sorted_tri, sorted_tri>, delaunay_edge_comparator> valid_edges;
 	std::map<sorted_tri, sorted_tri, sorted_tri_comparator> vertex_aliases_map;
 	std::vector<std::pair<std::vector<float>, std::vector<sorted_tri>>> vertex_clusters;
 	std::map<sorted_tri, int, sorted_tri_comparator> in_cluster_map;
@@ -627,9 +631,12 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 			vertex_aliases_map[u.second[j]] = u.second[ind];
 		}
 	}
+	site_polygon.resize(N);
+	//std::vector<std::vector<sorted_tri_pair>> site_polygon(N);
+
 	std::map<sorted_tri, std::vector<sorted_tri>, sorted_tri_comparator> pmap;
-	int start_ind;
-	std::vector<std::vector<int>> nbrdata(N);
+	//int start_ind;
+	nbrdata.resize(N);
 	for (auto& u : valid_edges) {	
 		auto p1 = u.second.first;
 		auto p2 = u.second.second;
@@ -643,9 +650,11 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 			p2 = it2->second;
 		}
 
+		u.second.first = p1;
+		u.second.second = p2;
+
 		auto it = pmap.find(p1);
 		if (it == pmap.end()) {
-
 			pmap.insert(it, { p1, {p2} });
 		}
 		else {
@@ -658,10 +667,20 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 		else {
 			it->second.push_back(p1);
 		}
+		
+		sorted_tri_pair stp(p1, p2);
+		if (has_invalid_vert_set.find(u.first.a) == has_invalid_vert_set.end()) {
+			site_polygon[u.first.a].push_back(stp);
+		}
+		if (has_invalid_vert_set.find(u.first.b) == has_invalid_vert_set.end()) {
+			site_polygon[u.first.b].push_back(stp);
+		}
+
 		if (has_invalid_vert_set.find(u.first.a) == has_invalid_vert_set.end() && has_invalid_vert_set.find(u.first.b) == has_invalid_vert_set.end()) {
 			start_ind = u.first.a;
 			nbrdata[u.first.a].push_back(u.first.b);
 			nbrdata[u.first.b].push_back(u.first.a);
+			dte.set(u.first.a, u.first.b);
 		}
 		
 	}
@@ -693,9 +712,10 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 		}
 	}
 
+	//std::set<sorted_tri_pair, sorted_tri_pair_comparator> removed_n_edges;
 	std::vector<bool> is_visited(N, false);
 	std::vector<int> cells;
-
+	
 	cells.push_back(start_ind);
 	is_visited[start_ind] = true;
 	while (1 && !cells.empty()) {
@@ -711,19 +731,22 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 				cells.push_back(c);
 				is_visited[nbrdata[c][i]] = true;
 				cells.push_back(nbrdata[c][i]);
+
 				dte.set(c, nbrdata[c][i]);
 				auto it = valid_edges.find(dte);
+				sorted_tri& st1 = it->second.first;
+				sorted_tri& st2 = it->second.second;
+				
 
-				sorted_tri st1 = it->second.first;
-				sorted_tri st2 = it->second.second;
-				auto it2 = vertex_aliases_map.find(st1);
+				/*auto it2 = vertex_aliases_map.find(st1);
 				if (it2 != vertex_aliases_map.end()) {
 					st1 = it2->second;
 				}
 				it2 = vertex_aliases_map.find(st2);
 				if (it2 != vertex_aliases_map.end()) {
 					st2 = it2->second;
-				}
+				}*/
+
 				auto* nlist = &pmap[st1];
 				auto it3 = nlist->begin();
 				for(;it3 != nlist->end(); ++it3) {
@@ -742,15 +765,22 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 				}
 				nlist->erase(it3);
 
-				valid_edges.erase(dte);
+				//valid_edges.erase(dte);
+
+				sorted_tri_pair stp(st1, st2);
+				removed_edges_set.insert(stp);
 				break;
 			}
 		}
 	}
+	start_ind = 1303;
+	start_pos[0] = sites[2 * start_ind];
+	start_pos[1] = sites[2 * start_ind + 1];
+	printf("start ind: %d\n", start_ind);
 
-	float hfw = 0.0025;
+	float hfw = 0.0015;
 
-	if(0)
+#if 0
 	for (auto& u : valid_edges) {
 		sorted_tri p1 = u.second.first;
 		sorted_tri p2 = u.second.second;
@@ -821,6 +851,7 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 			//vertices.push_back(c2[1] - v[1]);
 		}
 	}
+#endif
 
 	if(1)
 	for (auto& u : pmap) {

@@ -1,6 +1,8 @@
 #pragma once
 #include <cmath>
 #include <vector>
+#include <map>
+#include <set>
 
 struct tri {
 	int a[3];
@@ -8,7 +10,7 @@ struct tri {
 struct sorted_tri {
 	int a[3];
 	sorted_tri() {
-		set(-10, -20, -30);
+		set(-100, -200, -300);
 	}
 	sorted_tri(int a0, int a1, int a2) {
 		set(a0, a1, a2);
@@ -35,6 +37,12 @@ struct sorted_tri {
 		}
 	}
 };
+inline bool operator== (const sorted_tri& t1, const sorted_tri& t2) noexcept {
+	return (t1.a[0] == t2.a[0] && t1.a[1] == t2.a[1] && t1.a[2] == t2.a[2]);
+}
+inline bool operator!= (const sorted_tri& t1, const sorted_tri& t2) noexcept {
+	return (t1.a[0] != t2.a[0] || t1.a[1] != t2.a[1] || t1.a[2] != t2.a[2]);
+}
 struct sorted_tri_comparator {
 	bool operator() (const sorted_tri& t1, const sorted_tri& t2) const{
 		if (t1.a[0] == t2.a[0]) {
@@ -100,4 +108,11 @@ struct delaunay_edge_comparator {
 };
  
 std::vector<tri> bowyer_watson_triangualtion(float* points, int N);
-void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border, int K);
+void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border, int K,
+	std::map<sorted_tri, std::vector<float>, sorted_tri_comparator>& valid_vor_verts,
+	std::vector<std::vector<sorted_tri_pair>>& site_polygon,
+	std::vector<std::vector<int>>& nbrdata,
+	std::map<delaunay_tri_edge, std::pair<sorted_tri, sorted_tri>, delaunay_edge_comparator>& valid_edges,
+	std::set<sorted_tri_pair, sorted_tri_pair_comparator>& removed_edges_set,
+	int& start_ind,
+	float start_pos[2]);

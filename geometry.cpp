@@ -52,34 +52,52 @@ bool line_and_line_intersection(float* p1, float* p2, float* q1, float* q2, floa
 }
 bool line_seg_and_seg_intesection(float* p1, float* p2, float* q1, float* q2, float* out) {
 	if (line_and_line_intersection(p1, p2, q1, q2, out)) {
-		float s1, s2;
-		if (p1[0] == p2[0]) {
-			s1 = (out[1] - p1[1]) / (p2[1] - p1[1]);
-		}
-		else {
-			s1 = (out[0] - p1[0]) / (p2[0] - p1[0]);
-		}
-		if (q1[0] == q2[0]) {
-			s2 = (out[1] - q1[1]) / (q2[1] - q1[1]);
-		}
-		else {
-			s2 = (out[0] - q1[0]) / (q2[0] - q1[0]);
-		}
-		if (s1 > 0 && s1 < 1 && s2 > 0 && s2 < 1) {
-			return true;
-		}
+		bool b1 = point_orientation(p1, p2, q1) < 0;
+		bool b2 = point_orientation(p1, p2, q2) < 0;
+		bool b3 = point_orientation(q1, q2, p1) < 0;
+		bool b4 = point_orientation(q1, q2, p2) < 0;
+		return ((b1 ^ b2) && (b3 ^ b4));
 	}
 	return false;
 }
-
+bool line_and_line_intersection(int* p1, int* p2, int* q1, int* q2, float* out) {
+	int a = p1[0] * p2[1] - p1[1] * p2[0];
+	int b = q1[0] * q2[1] - q1[1] * q2[0];
+	int c = (p1[0] - p2[0]) * (q1[1] - q2[1]) - (p1[1] - p2[1]) * (q1[0] - q2[0]);
+	if (c == 0) {
+		return false;
+	}
+	out[0] = static_cast<float>(a * (q1[0] - q2[0]) - b * (p1[0] - p2[0])) / c;
+	out[1] = static_cast<float>(a * (q1[1] - q2[1]) - b * (p1[1] - p2[1])) / c;
+	return true;
+}
+bool line_seg_and_seg_intesection(int* p1, int* p2, int* q1, int* q2, float* out) {
+	if (line_and_line_intersection(p1, p2, q1, q2, out)) {
+		bool b1 = point_orientation(p1, p2, q1) < 0;
+		bool b2 = point_orientation(p1, p2, q2) < 0;
+		bool b3 = point_orientation(q1, q2, p1) < 0;
+		bool b4 = point_orientation(q1, q2, p2) < 0;
+		return ((b1 ^ b2) && (b3 ^ b4));
+	}
+	return false;
+}
+float sqr_dist_from_point_to_line(float* p1, float* p2, float* q) {
+	float a = p2[0] - p1[0];
+	float b = p2[1] - p1[1];
+	float c = (a * (p1[1] - q[1]) - b * (p1[0] - q[0]));
+	return (c * c / (a * a + b * b));
+}
 float dist_from_point_to_line(float* p1, float* p2, float* q) {
 	float a = p2[0] - p1[0];
 	float b = p2[1] - p1[1];
-	return fabs(a * (p1[1] - q[1]) - b * (p1[0] - q[0])) / sqrt(a*a+b*b);
+	return sqrt(sqr_dist_from_point_to_line(p1, p2, q));
 }
 
 // negative if p lies to the left of ab
 float point_orientation(float* a, float* b, float* p) {
+	return (p[0] - a[0]) * (b[1] - a[1]) - (b[0] - a[0]) * (p[1] - a[1]);
+}
+int point_orientation(int* a, int* b, int* p) {
 	return (p[0] - a[0]) * (b[1] - a[1]) - (b[0] - a[0]) * (p[1] - a[1]);
 }
 
