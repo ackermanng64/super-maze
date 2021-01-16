@@ -2,6 +2,7 @@
 #include <vector>
 #include <chrono>
 #include <queue>
+#include <array>
 #include "geometry.h"
 #include "delaunay.h"
 #include "voronoi.h"
@@ -106,7 +107,7 @@ vector<float> test_delaunay3(vector<sf::Vertex>& triangle_vertices) {
         sites.push_back((rand() % 2560) / 2559.f);
     }
 
-    auto pg = poission_disc_sampling(1, 1, 0.02);
+    auto pg = poission_disc_sampling(1, 1, 0.035);
     if(1)
     for (auto& u : pg) {
         for (auto& v : u) {
@@ -233,12 +234,42 @@ void t_voronoi_post_process(std::map<sorted_tri, std::vector<float>, sorted_tri_
     }
 }
 struct player_location_data {
-    int seg_ind = 0;
-    float t;
-    std::vector<float> crossing_ts;
-    std::vector<int> others;
+    float dist;
+    float centroid[2];
+    int mv_path_len;
+    std::vector<std::vector<float>> movement_path_data;
 };
+void get_centroid(std::vector<sorted_tri>& poly, 
+                std::map<sorted_tri, std::vector<float>, sorted_tri_comparator>& valid_vor_verts, 
+                float* centroid) {
+    centroid[0] = 0;
+    centroid[1] = 0;
+    float cx = 0;
+    float cy = 0;
+    float area = 0;
+    for (int i = 0; i < poly.size(); ++i) {
+        //printf("(%d, %d, %d)\n", site_sorted_polygon[start_ind][i].a[0], site_sorted_polygon[start_ind][i].a[1], site_sorted_polygon[start_ind][i].a[2]);
+        int j = (i + 1) % poly.size();
+        float* p1 = valid_vor_verts[poly[i]].data();
+        float* p2 = valid_vor_verts[poly[j]].data();
 
+        float s = p1[0] * p2[1] - p1[1] * p2[0];
+        area += s;
+        cx += (p1[0] + p2[0]) * s;
+        cy += (p1[1] + p2[1]) * s;
+    }
+    area /= 2;
+    cx /= (6 * area);
+    cy /= (6 * area);
+    centroid[0] = cx;
+    centroid[1] = cy;
+}
+float get_move_distance(float* p0, float* p1, float* p2) {
+    float d1 = sqrt(sqr_dist(p0, p2));
+    float d2 = sqrt(sqr_dist(p0, p1));
+    float d3 = sqrt(sqr_dist(p2, p1));
+    return (2 * d1 + d2 + d3) / 3;
+}
 int main()
 {
     std::vector<int> seeds_with_bugs = {
@@ -254,13 +285,17 @@ int main()
     srand(1608464112);
     printf("seed: %ld\n", seed);
     sf::ContextSettings settings;
-    settings.antialiasingLevel = 8;
+    //settings.antialiasingLevel = 8;
     int window_width = 1000;
     int window_height = 1000;
     int hmargin = 10;
     int vmargin = 10;
     sf::RenderWindow window(sf::VideoMode(window_width, window_height), "voronoi", sf::Style::Default, settings);
+    window.setFramerateLimit(60);
+
     sf::CircleShape shape(5);
+    sf::CircleShape shape_target(3.5);
+    shape_target.setFillColor(sf::Color(255, 125, 250, 120));
     vector<sf::Vertex> triangles_vertices;
     vector<sf::Vertex> voronoi_edges;
     
@@ -386,28 +421,6 @@ int main()
         //printf("(%d, %d, %d) (%d, %d, %d)\n", u.st1.a[0], u.st1.a[1], u.st1.a[2], u.st2.a[0], u.st2.a[1], u.st2.a[2]);
     }
 
-    float area = 0;
-    float centroid[2] = { 0, 0 };
-    float cx = 0;
-    float cy = 0;
-
-    for (int i = 0; i < site_sorted_polygon[start_ind].size(); ++i) {
-        //printf("(%d, %d, %d)\n", site_sorted_polygon[start_ind][i].a[0], site_sorted_polygon[start_ind][i].a[1], site_sorted_polygon[start_ind][i].a[2]);
-        int j = (i + 1) % site_sorted_polygon[start_ind].size();
-        float* p1 = valid_vor_verts[site_sorted_polygon[start_ind][i]].data();
-        float* p2 = valid_vor_verts[site_sorted_polygon[start_ind][j]].data();
-
-        float s = p1[0] * p2[1] - p1[1] * p2[0];
-        area += s;
-        cx += (p1[0] + p2[0]) * s;
-        cy += (p1[1] + p2[1]) * s;
-    }
-    area /= 2;
-    cx /= (6 * area);
-    cy /= (6 * area);
-    centroid[0] = cx;
-    centroid[1] = cy;
-
     player_location_data pld;
     bool is_mouse_left_held = false;
     float mouse_press_pos[2];
@@ -416,12 +429,14 @@ int main()
     std::vector<sf::Vertex> path_to_nbrs_data;
     
     const int max_depth = 3;
-    std::map<int, int> bfs_prev_map;
-    std::queue<int> bfs_queue;
-
-    for (auto& u : nbrdata[start_ind]) {
-        printf("%d\n", u);
+    pld.movement_path_data.resize(2 * max_depth);
+    for (auto& u : pld.movement_path_data) {
+        u.resize(5);
     }
+    pld.mv_path_len = 0;
+
+    std::map<int, std::pair<int, std::array<float, 4>>> bfs_prev_map;
+    std::queue<int> bfs_queue;
 
     auto set_path_to_nbrs = [&]() {
         int depth = 0;
@@ -430,21 +445,23 @@ int main()
             bfs_queue.pop();
         }
 
-        pld.seg_ind = -1;
-        pld.crossing_ts.clear();
-        pld.others.clear();
-
         path_to_nbrs_data.clear();
 
-        bfs_prev_map.insert({ start_ind, -1 });
         bfs_queue.push(start_ind);
         int curr_count = 1;
         int next_count = 0; 
+        
+        float centroid1[2];
+        get_centroid(site_sorted_polygon[start_ind], valid_vor_verts, centroid1);
+        
+        bfs_prev_map.insert({ start_ind, {-1, {centroid1[0], centroid1[1], 0, 0}} });
 
         while (!bfs_queue.empty()) {
             int ind = bfs_queue.front();
             bfs_queue.pop();
             --curr_count;
+
+            get_centroid(site_sorted_polygon[ind], valid_vor_verts, centroid1);
 
             for (int i = 0; i < nbrdata[ind].size(); ++i) {
                 int other = nbrdata[ind][i];
@@ -457,33 +474,36 @@ int main()
                 if (removed_edges_set.find(stp) != removed_edges_set.end()) {
                     if (bfs_prev_map.find(other) == bfs_prev_map.end()) {
                         bfs_queue.push(other);
-                        bfs_prev_map.insert({ other, ind });
+                        
                         ++next_count;
                         
-                        if (ind == start_ind) {
-                            float* q1 = &sites[2 * ind];
-                            float* q2 = &sites[2 * other];
-                            float res[2];
-                            if (line_seg_and_seg_intesection(p1, p2, q1, q2, res)) {
-                                if (fabs(q1[0] - q2[0]) > fabs(q1[1] - q2[1])) {
-                                    pld.crossing_ts.push_back((res[0] - q1[0]) / (q2[0] - q1[0]));
-                                }
-                                else {
-                                    pld.crossing_ts.push_back((res[1] - q1[1]) / (q2[1] - q1[1]));
-                                }
-                            }
-                            pld.others.push_back(other);
-                        }
+                        
+                        float centroid2[2];
+                        get_centroid(site_sorted_polygon[other], valid_vor_verts, centroid2);
+                        
+                        float mid[2] = { (p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2 };
+                        float mid_cpt[2] = {
+                            2 * (mid[0] - 0.25 * centroid1[0] - 0.25 * centroid2[0]),
+                            2 * (mid[1] - 0.25 * centroid1[1] - 0.25 * centroid2[1])
+                        };
+
+                        bfs_prev_map.insert({ other, {ind, {centroid2[0], centroid2[1], mid_cpt[0], mid_cpt[1]}} });
 
                         sf::Vertex v;
                         v.color = sf::Color::Red;
 
-                        v.position.x = sites[2 * ind];
-                        v.position.y = sites[2 * ind + 1];
-                        path_to_nbrs_data.push_back(v);
-                        v.position.x = sites[2 * other];
-                        v.position.y = sites[2 * other + 1];
-                        path_to_nbrs_data.push_back(v);
+                        float step = 0.1;
+                        for (float t = 0; t <= 1.f - step + 0.001f; t += step) {
+                            float omt = 1 - t;
+                            v.position.x = omt * omt * centroid1[0] + 2 * omt * t * mid_cpt[0] + t * t * centroid2[0];
+                            v.position.y = omt * omt * centroid1[1] + 2 * omt * t * mid_cpt[1] + t * t * centroid2[1];
+                            path_to_nbrs_data.push_back(v);
+
+                            omt = 1 - t - step;
+                            v.position.x = omt * omt * centroid1[0] + 2 * omt * (t + step) * mid_cpt[0] + (t + step) * (t + step) * centroid2[0];
+                            v.position.y = omt * omt * centroid1[1] + 2 * omt * (t + step) * mid_cpt[1] + (t + step) * (t + step) * centroid2[1];
+                            path_to_nbrs_data.push_back(v);
+                        }
 
                     }
                 }
@@ -501,10 +521,13 @@ int main()
     };
     set_path_to_nbrs();
 
-    int move_target;
-    float move_t;
+    sf::Clock clock;
+    int move_target = -1;
+    float t_accum;
+    float prev_t_accum;
     bool is_target_reached = true;
-
+    float move_speed = 75;
+    float t_rem;
     while (window.isOpen())
     {
         sf::Event event;
@@ -526,7 +549,7 @@ int main()
                     display_cull_polygon = !display_cull_polygon;
                 }
             }
-            if (event.type == sf::Event::MouseButtonPressed && is_target_reached) {
+            if (event.type == sf::Event::MouseButtonPressed) {
                 if (event.mouseButton.button == sf::Mouse::Left) {
                     is_mouse_left_held = true;
                     mouse_press_pos[0] = event.mouseButton.x;
@@ -559,28 +582,76 @@ int main()
                             }
                         }
                         if (counter % 2 == 1) {
-                            //start_ind = u.first;
-                            //start_pos[0] = sites[2 * start_ind];
-                            //start_pos[1] = sites[2 * start_ind + 1];
-                            //set_path_to_nbrs();
-                            move_t = 0;
-                            move_target = u.first;
-                            is_target_reached = false;
-                            
-                            int prev = u.first;
-                            int next = bfs_prev_map[prev];
-                            while (next != start_ind) {
-                                prev = next;
-                                next = bfs_prev_map[next];
-                            }
-                            
-                            for (int i = 0; i < pld.others.size(); ++i) {
-                                if (prev == pld.others[i]) {
-                                    pld.seg_ind = i;
-                                    break;
+                           
+                            if (pld.mv_path_len < 2) {
+                                //printf("case0\n");
+                                t_accum = 0;
+                                pld.mv_path_len = 0;
+                                move_target = u.first;
+                                int next = u.first;
+
+                                while (next != -1) {
+                                    auto p = bfs_prev_map.find(next);
+                                    pld.movement_path_data[pld.mv_path_len][0] = p->second.second[0];
+                                    pld.movement_path_data[pld.mv_path_len][1] = p->second.second[1];
+                                    pld.movement_path_data[pld.mv_path_len][2] = p->second.second[2];
+                                    pld.movement_path_data[pld.mv_path_len][3] = p->second.second[3];
+                                    pld.movement_path_data[pld.mv_path_len][4] = next;
+                                    ++pld.mv_path_len;
+                                    next = bfs_prev_map[next].first;
                                 }
+
+                                auto& centroid = pld.movement_path_data[pld.mv_path_len - 1];
+                                auto& p = pld.movement_path_data[pld.mv_path_len - 2];
+                                pld.dist = get_move_distance(&centroid[0], &p[2], &p[0]);
                             }
-                            
+                            else {
+                                auto pre_last = pld.movement_path_data[pld.mv_path_len - 2];
+                                auto last = pld.movement_path_data[pld.mv_path_len - 1];
+
+                                pld.mv_path_len = 0;
+                                move_target = u.first;
+                                int next = u.first;
+
+                                while (next != -1) {
+                                    auto p = bfs_prev_map.find(next);
+                                    pld.movement_path_data[pld.mv_path_len][0] = p->second.second[0];
+                                    pld.movement_path_data[pld.mv_path_len][1] = p->second.second[1];
+                                    pld.movement_path_data[pld.mv_path_len][2] = p->second.second[2];
+                                    pld.movement_path_data[pld.mv_path_len][3] = p->second.second[3];
+                                    pld.movement_path_data[pld.mv_path_len][4] = next;
+                                    ++pld.mv_path_len;
+                                    next = bfs_prev_map[next].first;
+                                }
+                                next = (int)pld.movement_path_data[pld.mv_path_len - 2][4];
+                                if (t_accum < 0.5) {
+                                    if ((int)pre_last[4] != next) {
+                                        t_accum = 1 - t_accum;
+                                        pld.movement_path_data[pld.mv_path_len - 1][2] = pre_last[2];
+                                        pld.movement_path_data[pld.mv_path_len - 1][3] = pre_last[3];
+                                        pld.movement_path_data[pld.mv_path_len] = pre_last;
+                                        ++pld.mv_path_len;
+                                        //printf("case2\n");
+                                    }
+                                } else {
+                                    if ((int)last[4] == next) {
+                                        t_accum = 1 - t_accum;
+                                        //printf("case3\n");
+                                    }
+                                    else {
+                                        //printf("case4\n");
+                                        pld.movement_path_data[pld.mv_path_len - 1][2] = pre_last[2];
+                                        pld.movement_path_data[pld.mv_path_len - 1][3] = pre_last[3];
+                                        pld.movement_path_data[pld.mv_path_len] = last;
+                                        ++pld.mv_path_len;
+                                    }
+                                }
+                                auto& centroid = pld.movement_path_data[pld.mv_path_len - 1];
+                                auto& p = pld.movement_path_data[pld.mv_path_len - 2];
+                                pld.dist = get_move_distance(&centroid[0], &p[2], &p[0]);
+
+                            }
+
                             break;
                         }
                     }
@@ -597,36 +668,40 @@ int main()
                 
             }
         }
+        float dt = clock.restart().asMicroseconds() / 1e6;
+        if (pld.mv_path_len > 1) {
+            
+            if (t_accum == 1) {
+                --pld.mv_path_len;
 
-        if (!is_target_reached) {
-            if (move_t >= 1) {
-                start_ind = pld.others[pld.seg_ind];
-                set_path_to_nbrs();
-                if (start_ind == move_target) {
-                    is_target_reached = true;
+                if (pld.mv_path_len != 1) {
+                    auto& p = pld.movement_path_data[pld.mv_path_len - 2];
+                    pld.dist = get_move_distance(start_pos, &p[2], &p[0]);
                 }
-                else {
-                    int prev = move_target;
-                    int next = bfs_prev_map[prev];
-                    while (next != start_ind) {
-                        prev = next;
-                        next = bfs_prev_map[next];
-                    }
-
-                    for (int i = 0; i < pld.others.size(); ++i) {
-                        if (prev == pld.others[i]) {
-                            pld.seg_ind = i;
-                            break;
-                        }
-                    }
-                    move_t = 0;
-                }
+                t_accum =  0;
             }
             else {
-                move_t += 0.005;
-                int other = pld.others[pld.seg_ind];
-                start_pos[0] = (sites[2 * other] - sites[2 * start_ind]) * move_t + sites[2 * start_ind];
-                start_pos[1] = (sites[2 * other + 1] - sites[2 * start_ind + 1]) * move_t + sites[2 * start_ind + 1];
+                auto& p = pld.movement_path_data[pld.mv_path_len - 2];
+                prev_t_accum = t_accum;
+                t_accum += dt * move_speed / pld.dist;
+                if (prev_t_accum < 0.5 && t_accum >= 0.5) {
+                    start_ind = (int)p[4];
+                    set_path_to_nbrs();
+                }
+                if (t_accum >= 1) {
+                    t_rem = t_accum - 1;
+                    t_accum = 1;
+                }
+                float a = 1 - t_accum;
+                float b = 2 * a * t_accum;
+                float c = t_accum * t_accum;
+                a *= a;
+
+                auto& centroid1 = pld.movement_path_data[pld.mv_path_len - 1];
+                float* centroid2 = &p[0];
+                float* mid_cpt = &p[2];
+                start_pos[0] = centroid1[0] * a + b * mid_cpt[0] + c * centroid2[0];
+                start_pos[1] = centroid1[1] * a + b * mid_cpt[1] + c * centroid2[1];
             }
         }
 
@@ -675,6 +750,21 @@ int main()
         }
         {
             window.draw(path_to_nbrs_data.data(), path_to_nbrs_data.size(), sf::Lines);
+        }
+        {
+            for (auto& u : bfs_prev_map) {
+                if (u.first == start_ind) continue;
+                if (u.first == move_target) {
+                    shape_target.setFillColor(sf::Color(0, 255, 0, 130));
+                }
+                else {
+                    shape_target.setFillColor(sf::Color(255, 0, 255, 130));
+                }
+                float x = u.second.second[0];
+                float y = u.second.second[1];
+                shape_target.setPosition(sf::Vector2f(x - 3.5, y - 3.5));
+                window.draw(shape_target);
+            }
         }
         
         window.display();

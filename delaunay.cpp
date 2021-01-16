@@ -778,7 +778,7 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 	start_pos[1] = sites[2 * start_ind + 1];
 	printf("start ind: %d\n", start_ind);
 
-	float hfw = 0.0015;
+	float hfw = 0.0035;
 
 #if 0
 	for (auto& u : valid_edges) {
