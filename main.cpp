@@ -436,6 +436,7 @@ int main()
     pld.mv_path_len = 0;
 
     std::map<int, std::pair<int, std::array<float, 4>>> bfs_prev_map;
+    std::map<int, std::pair<int, std::vector<sf::Vertex>>> bfs_targets;
     std::queue<int> bfs_queue;
 
     auto set_path_to_nbrs = [&]() {
@@ -488,11 +489,20 @@ int main()
                         };
 
                         bfs_prev_map.insert({ other, {ind, {centroid2[0], centroid2[1], mid_cpt[0], mid_cpt[1]}} });
+                        
+                        auto it = bfs_targets.find(other);
+                        if (it == bfs_targets.end()) {
+                           it = bfs_targets.insert(it, { other, {depth + 1, std::vector<sf::Vertex>()} });
+                        }
+                        else {
+                            it->second.first = depth + 1;
+                            it->second.second.clear();
+                        }
 
                         sf::Vertex v;
-                        v.color = sf::Color::Red;
+                        v.color = sf::Color::Blue;
 
-                        float step = 0.1;
+                        /*float step = 0.1;
                         for (float t = 0; t <= 1.f - step + 0.001f; t += step) {
                             float omt = 1 - t;
                             v.position.x = omt * omt * centroid1[0] + 2 * omt * t * mid_cpt[0] + t * t * centroid2[0];
@@ -503,6 +513,19 @@ int main()
                             v.position.x = omt * omt * centroid1[0] + 2 * omt * (t + step) * mid_cpt[0] + (t + step) * (t + step) * centroid2[0];
                             v.position.y = omt * omt * centroid1[1] + 2 * omt * (t + step) * mid_cpt[1] + (t + step) * (t + step) * centroid2[1];
                             path_to_nbrs_data.push_back(v);
+                        }*/
+
+                        float step = 0.1;
+                        for (float t = 0; t <= 1.f - step + 0.001f; t += step) {
+                            float omt = 1 - t;
+                            v.position.x = omt * omt * centroid1[0] + 2 * omt * t * mid_cpt[0] + t * t * centroid2[0];
+                            v.position.y = omt * omt * centroid1[1] + 2 * omt * t * mid_cpt[1] + t * t * centroid2[1];
+                            it->second.second.push_back(v);
+
+                            omt = 1 - t - step;
+                            v.position.x = omt * omt * centroid1[0] + 2 * omt * (t + step) * mid_cpt[0] + (t + step) * (t + step) * centroid2[0];
+                            v.position.y = omt * omt * centroid1[1] + 2 * omt * (t + step) * mid_cpt[1] + (t + step) * (t + step) * centroid2[1];
+                            it->second.second.push_back(v);
                         }
 
                     }
@@ -520,6 +543,8 @@ int main()
         }
     };
     set_path_to_nbrs();
+    start_pos[0] = bfs_prev_map[start_ind].second[0];
+    start_pos[1] = bfs_prev_map[start_ind].second[1];
 
     sf::Clock clock;
     int move_target = -1;
@@ -738,30 +763,85 @@ int main()
             text.setString("B" + to_string(i / 2));
             window.draw(text);
         }
-
         
         {
             shape.setPosition(sf::Vector2f(start_pos[0] - 5, start_pos[1] - 5));
             shape.setFillColor(sf::Color::Red);
             window.draw(shape);
         }
+
         {
             window.draw(movement_path_line.data(), movement_path_line.size(), sf::Lines);
         }
-        {
-            window.draw(path_to_nbrs_data.data(), path_to_nbrs_data.size(), sf::Lines);
-        }
+
         {
             for (auto& u : bfs_prev_map) {
                 if (u.first == start_ind) continue;
+
+                auto it = bfs_targets.find(u.first);
+                int draw_size = it->second.second.size();
+                if (it->second.first == max_depth) {
+                    if (pld.mv_path_len > 1) { // in motion
+                        float t = 1;
+                        int mving_twrds = pld.movement_path_data[pld.mv_path_len - 2][4];
+                        if (t_accum < 0.5) {
+                            int next = u.first;
+                            while (next != -1) {
+                                if (next == mving_twrds) {
+                                    break;
+                                }
+                                next = bfs_prev_map[next].first;
+                            }
+                            if (next != mving_twrds) {
+                                t = (1 - 2 * t_accum);
+                                t = 1 - t;
+                                t *= t;
+                                t = 1 - t;
+                            }
+                        }
+                        else {
+                            int prev = pld.movement_path_data[pld.mv_path_len - 1][4];
+                            int next = u.first;
+                            while (next != -1) {
+                                if (next == mving_twrds) {
+                                    break;
+                                }
+                                if (next == prev) {
+                                    break;
+                                }
+                                next = bfs_prev_map[next].first;
+                            }
+                            if (next == mving_twrds) {
+                                t = (2 * t_accum - 1);
+                                t = 1 - t;
+                                t *= t;
+                                t = 1 - t;
+                            }
+                        }
+                        draw_size = draw_size * t;
+                    }
+                }
+                window.draw(it->second.second.data(), draw_size, sf::Lines);
+
                 if (u.first == move_target) {
                     shape_target.setFillColor(sf::Color(0, 255, 0, 130));
                 }
                 else {
                     shape_target.setFillColor(sf::Color(255, 0, 255, 130));
                 }
-                float x = u.second.second[0];
-                float y = u.second.second[1];
+                //float x = u.second.second[0];
+                //float y = u.second.second[1];
+                
+                float x, y;
+                if (draw_size > 0) {
+                    x = it->second.second[draw_size - 1].position.x;
+                    y = it->second.second[draw_size - 1].position.y;
+                }
+                else {
+                    x = it->second.second[0].position.x;
+                    y = it->second.second[0].position.y;
+                }
+                
                 shape_target.setPosition(sf::Vector2f(x - 3.5, y - 3.5));
                 window.draw(shape_target);
             }
