@@ -114,5 +114,4 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 	std::vector<std::vector<int>>& nbrdata,
 	std::map<delaunay_tri_edge, std::pair<sorted_tri, sorted_tri>, delaunay_edge_comparator>& valid_edges,
 	std::set<sorted_tri_pair, sorted_tri_pair_comparator>& removed_edges_set,
-	int& start_ind,
-	float start_pos[2]);
+	int& start_ind);

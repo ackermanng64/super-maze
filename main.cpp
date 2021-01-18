@@ -147,12 +147,11 @@ void test_voronoi1(vector<float>& sites, vector<sf::Vertex>& edges, vector<float
     std::vector<std::vector<int>>& nbrdata,
     std::map<delaunay_tri_edge, std::pair<sorted_tri, sorted_tri>, delaunay_edge_comparator>& valid_edge,
     std::set<sorted_tri_pair, sorted_tri_pair_comparator>& removed_n_edges,
-    int& start_ind,
-    float start_pos[2]) { 
+    int& start_ind, float start_pos[2]) { 
     vector<float> vertices;
     auto start = std::chrono::steady_clock::now();
     t_voronoi(  sites.data(), sites.size() / 2, vertices, border.data(), border.size() / 2, valid_vor_verts, site_polygon, nbrdata,
-                valid_edge, removed_n_edges, start_ind, start_pos);
+                valid_edge, removed_n_edges, start_ind);
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::milli> elapsed = end - start;
     printf("bw2: %lfms\n", elapsed.count());
@@ -282,10 +281,10 @@ int main()
         1608464112, // render problem2
     };
     time_t seed = time(NULL);
-    srand(1608464112);
+    srand(1610968985);
     printf("seed: %ld\n", seed);
     sf::ContextSettings settings;
-    //settings.antialiasingLevel = 8;
+    settings.antialiasingLevel = 8;
     int window_width = 1000;
     int window_height = 1000;
     int hmargin = 10;
@@ -344,6 +343,15 @@ int main()
         0.34, 0.31,
         0.24, 0.2
     };
+
+    /*cull_polygon.clear();
+    for (int i = 0; i < 32; ++i) {
+        float x = 0.3 * cos(i * 2 * 3.1415926536 / 32.f) + 0.5;
+        float y = 0.3 * sin(i * 2 * 3.1415926536 / 32.f) + 0.5;
+        cull_polygon.push_back(x);
+        cull_polygon.push_back(y);
+    }*/
+
     vector<sf::Vertex> cull_polygon_verts; 
     {
         int S = cull_polygon.size() / 2;
@@ -428,7 +436,7 @@ int main()
     std::vector<sf::Vertex> movement_path_line;
     std::vector<sf::Vertex> path_to_nbrs_data;
     
-    const int max_depth = 3;
+    const int max_depth = 2;
     pld.movement_path_data.resize(2 * max_depth);
     for (auto& u : pld.movement_path_data) {
         u.resize(5);
@@ -515,7 +523,7 @@ int main()
                             path_to_nbrs_data.push_back(v);
                         }*/
 
-                        float step = 0.1;
+                        float step = 0.05;
                         for (float t = 0; t <= 1.f - step + 0.001f; t += step) {
                             float omt = 1 - t;
                             v.position.x = omt * omt * centroid1[0] + 2 * omt * t * mid_cpt[0] + t * t * centroid2[0];
@@ -735,7 +743,7 @@ int main()
             window.draw(triangles_vertices.data(), triangles_vertices.size(), sf::Lines);
         }
         if (display_vor) {
-            window.draw(voronoi_edges.data(), voronoi_edges.size(), sf::Triangles);
+            window.draw(voronoi_edges.data(), voronoi_edges.size(), sf::Lines);
         }
         if (display_cull_polygon) {
             window.draw(cull_polygon_verts.data(), cull_polygon_verts.size(), sf::Lines);
