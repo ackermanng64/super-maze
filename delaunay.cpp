@@ -1237,6 +1237,8 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 		}
 	};
 	
+	bool line_mode = false;
+
 	for (auto& u : pmap) {
 		float* pp = valid_vor_verts[u.first].data();
 		auto& nlist = u.second.first;
@@ -1283,30 +1285,50 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 						get_vs2(tt, pp, valid_vor_verts[mlist[(j - 1 + M2) % M2]].data(), valid_vor_verts[mlist[(j + 1) % M2]].data(), hfw, v1, v2);
 					}
 
-					float w1 = 0.5, w2 = 1 - w1;
+					//float w1 = 0.5, w2 = 1 - w1;
+					float lu1 = sqrt(sqr_len(u1));
+					float lu2 = sqrt(sqr_len(u2));
+					float lv1 = sqrt(sqr_len(v1));
+					float lv2 = sqrt(sqr_len(v2));
+					float w1 = lv2 / (lu1 + lv2);
+					float w2 = 1 - w1;
+					float w3 = lv1 / (lu2 + lv1);
+					float w4 = 1 - w3;
+					
+					float l = hfw / sqrt(sqr_dist(pp, tt));
+					float pu1[2] = { (tt[1] - pp[1]) * l, (pp[0] - tt[0]) * l };
+					float pu2[2] = { -pu1[0], -pu1[1] };
 
 					float mid[2] = { (pp[0] + tt[0]) / 2 , (pp[1] + tt[1]) / 2 };
 					u.second.second[i].push_back(u1[0] + pp[0]);
 					u.second.second[i].push_back(u1[1] + pp[1]);
-					u.second.second[i].push_back(u1[0] * w1 + v2[0] * w2 + mid[0]);
-					u.second.second[i].push_back(u1[1] * w1 + v2[1] * w2 + mid[1]);
+					//u.second.second[i].push_back(u1[0] * w1 + v2[0] * w2 + mid[0]);
+					//u.second.second[i].push_back(u1[1] * w1 + v2[1] * w2 + mid[1]);
+					u.second.second[i].push_back(pu1[0] + mid[0]);
+					u.second.second[i].push_back(pu1[1] + mid[1]);
 
 					u.second.second[i].push_back(u2[0] + pp[0]);
 					u.second.second[i].push_back(u2[1] + pp[1]);
-					u.second.second[i].push_back(u2[0] * w1 + v1[0] * w2 + mid[0]);
-					u.second.second[i].push_back(u2[1] * w1 + v1[1] * w2 + mid[1]);
+					//u.second.second[i].push_back(u2[0] * w3 + v1[0] * w4 + mid[0]);
+					//u.second.second[i].push_back(u2[1] * w3 + v1[1] * w4 + mid[1]);
+					u.second.second[i].push_back(pu2[0] + mid[0]);
+					u.second.second[i].push_back(pu2[1] + mid[1]);
 
 					v.second[j].push_back(v1[0] + tt[0]);
 					v.second[j].push_back(v1[1] + tt[1]);
-					v.second[j].push_back(v1[0] * w2 + u2[0] * w1 + mid[0]);
-					v.second[j].push_back(v1[1] * w2 + u2[1] * w1 + mid[1]);
+					//v.second[j].push_back(v1[0] * w4 + u2[0] * w3 + mid[0]);
+					//v.second[j].push_back(v1[1] * w4 + u2[1] * w3 + mid[1]);
+					v.second[j].push_back(pu2[0] + mid[0]);
+					v.second[j].push_back(pu2[1] + mid[1]);
 
 					v.second[j].push_back(v2[0] + tt[0]);
 					v.second[j].push_back(v2[1] + tt[1]);
-					v.second[j].push_back(v2[0] * w2 + u1[0] * w1 + mid[0]);
-					v.second[j].push_back(v2[1] * w2 + u1[1] * w1 + mid[1]);
+					//v.second[j].push_back(v2[0] * w2 + u1[0] * w1 + mid[0]);
+					//v.second[j].push_back(v2[1] * w2 + u1[1] * w1 + mid[1]);
+					v.second[j].push_back(pu1[0] + mid[0]);
+					v.second[j].push_back(pu1[1] + mid[1]);
 
-					if (1) {
+					if (line_mode) {
 						vertices.push_back(pp[0]);
 						vertices.push_back(pp[1]);
 						vertices.push_back(tt[0]);
@@ -1332,81 +1354,336 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 						vertices.push_back(tt[0] + v2[0]);
 						vertices.push_back(tt[1] + v2[1]);
 					}
+					else if (0) {
+						vertices.push_back(pp[0] + u1[0]);
+						vertices.push_back(pp[1] + u1[1]);
+						vertices.push_back(tt[0] + v2[0]);
+						vertices.push_back(tt[1] + v2[1]);
+						vertices.push_back(tt[0]);
+						vertices.push_back(tt[1]);
+
+						vertices.push_back(tt[0]);
+						vertices.push_back(tt[1]);
+						vertices.push_back(pp[0]);
+						vertices.push_back(pp[1]);
+						vertices.push_back(pp[0] + u1[0]);
+						vertices.push_back(pp[1] + u1[1]);
+
+						vertices.push_back(tt[0]);
+						vertices.push_back(tt[1]);
+						vertices.push_back(tt[0] + v1[0]);
+						vertices.push_back(tt[1] + v1[1]);
+						vertices.push_back(pp[0]);
+						vertices.push_back(pp[1]);
+
+						vertices.push_back(tt[0] + v1[0]);
+						vertices.push_back(tt[1] + v1[1]);
+						vertices.push_back(pp[0] + u2[0]);
+						vertices.push_back(pp[1] + u2[1]);
+						vertices.push_back(pp[0]);
+						vertices.push_back(pp[1]);
+					}
 					break;
 				}
 			}
 		}
 	}
 
+	// L = (a, b, c) where ax + by + c = 0
+	auto get_line_and_bezier_intersection_t = [](float* L, float* p0, float* p1, float* p2) {
+		float Q[3] = { dot_prd(L, p0), dot_prd(L, p1), dot_prd(L, p2) };
+		float a = Q[0] - 2 * Q[1] + Q[2];
+		float b = -2 * Q[0] + 2 * Q[1];
+		float c = Q[0] + L[2];
+		float Dt = b * b - 4 * a * c;
+		float t = (-b - sqrt(Dt)) / (2 * a);
+		if (t < 0 || t > 1) {
+			t = (-b + sqrt(Dt)) / (2 * a);
+		}
+		return t;
+	};
+
 	for (auto& u : pmap) {
 		float* pp = valid_vor_verts[u.first].data();
 		auto& nlist = u.second.first;
 		int M = nlist.size();
-		if (M < 2) continue;
-		for (int i = 0; i < M; ++i) {
-			/*auto it = done_set.find(stp);
-			if (it == done_set.end()) {
-				continue;
-			}
-			done_set.insert(it, stp);*/
-			int prev_ind = (i - 1 + M) % M;
-			int next_ind = (i + 1) % M;
+		if (M == 1) {
+			float* A = valid_vor_verts[u.first].data();
+			float* B = valid_vor_verts[u.second.first[0]].data();
+			float AB[2] = { B[0] - A[0], B[1] - A[1] };
+			float* p0 = &u.second.second[0][0];
+			float* p3 = &u.second.second[0][4];
 			
-			float* p0 = &u.second.second[prev_ind][6];
-			float* m = &u.second.second[i][0];
-			float* p2 = &u.second.second[i][2];
-			float p1[2];
-			p1[0] = 2 * (m[0] - 0.25 * p0[0] - 0.25 * p2[0]);
-			p1[1] = 2 * (m[1] - 0.25 * p0[1] - 0.25 * p2[1]);
-
-			if(0) {
+			if (line_mode) {
 				vertices.push_back(p0[0]);
 				vertices.push_back(p0[1]);
-				vertices.push_back(m[0]);
-				vertices.push_back(m[1]);
+				vertices.push_back(u.second.second[0][2]);
+				vertices.push_back(u.second.second[0][3]);
 
-				vertices.push_back(m[0]);
-				vertices.push_back(m[1]);
+				vertices.push_back(p3[0]);
+				vertices.push_back(p3[1]);
+				vertices.push_back(u.second.second[0][6]);
+				vertices.push_back(u.second.second[0][7]);
+			}
+			else {
+				vertices.push_back(A[0]);
+				vertices.push_back(A[1]);
+				vertices.push_back(p0[0]);
+				vertices.push_back(p0[1]);
+				vertices.push_back(u.second.second[0][2]);
+				vertices.push_back(u.second.second[0][3]);
+
+				vertices.push_back(A[0]);
+				vertices.push_back(A[1]);
+				vertices.push_back(u.second.second[0][2]);
+				vertices.push_back(u.second.second[0][3]);
+				vertices.push_back((A[0] + B[0]) / 2);
+				vertices.push_back((A[1] + B[1]) / 2);
+				
+
+				vertices.push_back(A[0]);
+				vertices.push_back(A[1]);
+				vertices.push_back((A[0] + B[0]) / 2);
+				vertices.push_back((A[1] + B[1]) / 2);
+				vertices.push_back(u.second.second[0][6]);
+				vertices.push_back(u.second.second[0][7]);
+
+				vertices.push_back(A[0]);
+				vertices.push_back(A[1]);
+				vertices.push_back(u.second.second[0][6]);
+				vertices.push_back(u.second.second[0][7]);
+				vertices.push_back(p3[0]);
+				vertices.push_back(p3[1]);
+
+			}
+			
+
+			float v[2] = { (p0[0] - p3[0]) / 2, (p0[1] - p3[1]) / 2 };
+			float y = -v[0];
+			v[0] = v[1];
+			v[1] = y;
+			if (dot_prd(AB, v) > 0) {
+				v[0] *= -1;
+				v[1] *= -1;
+			}
+			AB[0] = v[0] + A[0];
+			AB[1] = v[1] + A[1];
+			
+			float p1[2] = { p0[0] + v[0], p0[1] + v[1] };
+			float p2[2] = { p3[0] + v[0], p3[1] + v[1] };
+			if(0)
+			{
+				vertices.push_back(p0[0]);
+				vertices.push_back(p0[1]);
+				vertices.push_back(p1[0]);
+				vertices.push_back(p1[1]);
+
+				vertices.push_back(p1[0]);
+				vertices.push_back(p1[1]);
 				vertices.push_back(p2[0]);
 				vertices.push_back(p2[1]);
+
+				vertices.push_back(p2[0]);
+				vertices.push_back(p2[1]);
+				vertices.push_back(p3[0]);
+				vertices.push_back(p3[1]);
 			}
 			
+			if (line_mode) {
+				float step = 0.1;
+				for (float t = 0; t <= 1.f - step + 0.001f; t += step) {
+					float t1 = 1 - t;
+					float t2 = 3 * t * t1 * t1;
+					float t3 = 3 * t * t * t1;
+					float t4 = t * t * t;
+					t1 = t1 * t1 * t1;
 
-			float step = 0.1;
-			for (float t = 0; t <= 1.f - step + 0.001f; t += step) {
-				float omt = 1 - t;
-				float x = omt * omt * p0[0] + 2 * omt * t * p1[0] + t * t * p2[0];
-				float y = omt * omt * p0[1] + 2 * omt * t * p1[1] + t * t * p2[1];
-				vertices.push_back(x);
-				vertices.push_back(y);
+					float x = t1 * p0[0] + t2 * p1[0] + t3 * p2[0] + t4 * p3[0];
+					float y = t1 * p0[1] + t2 * p1[1] + t3 * p2[1] + t4 * p3[1];
 
-				omt = 1 - t - step;
-				x = omt * omt * p0[0] + 2 * omt * (t + step) * p1[0] + (t + step) * (t + step) * p2[0];
-				y = omt * omt * p0[1] + 2 * omt * (t + step) * p1[1] + (t + step) * (t + step) * p2[1];
-				vertices.push_back(x);
-				vertices.push_back(y);
+					vertices.push_back(x);
+					vertices.push_back(y);
+
+					t += step;
+					t1 = 1 - t;
+					t2 = 3 * t * t1 * t1;
+					t3 = 3 * t * t * t1;
+					t4 = t * t * t;
+					t1 = t1 * t1 * t1;
+					t -= step;
+
+					x = t1 * p0[0] + t2 * p1[0] + t3 * p2[0] + t4 * p3[0];
+					y = t1 * p0[1] + t2 * p1[1] + t3 * p2[1] + t4 * p3[1];
+
+
+					vertices.push_back(x);
+					vertices.push_back(y);
+				}
 			}
-			
-			p0 = &u.second.second[next_ind][2];
-			m = &u.second.second[i][4];
-			p2 = &u.second.second[i][6];
-			p1[0] = 2 * (m[0] - 0.25 * p0[0] - 0.25 * p2[0]);
-			p1[1] = 2 * (m[1] - 0.25 * p0[1] - 0.25 * p2[1]);
+			else {
+				float step = 0.1;
+				for (float t = 0; t <= 1.f - step + 0.001f; t += step) {
+					float t1 = 1 - t;
+					float t2 = 3 * t * t1 * t1;
+					float t3 = 3 * t * t * t1;
+					float t4 = t * t * t;
+					t1 = t1 * t1 * t1;
 
-			for (float t = 0; t <= 1.f - step + 0.001f; t += step) {
-				float omt = 1 - t;
-				float x = omt * omt * p0[0] + 2 * omt * t * p1[0] + t * t * p2[0];
-				float y = omt * omt * p0[1] + 2 * omt * t * p1[1] + t * t * p2[1];
-				vertices.push_back(x);
-				vertices.push_back(y);
+					float x = t1 * p0[0] + t2 * p1[0] + t3 * p2[0] + t4 * p3[0];
+					float y = t1 * p0[1] + t2 * p1[1] + t3 * p2[1] + t4 * p3[1];
 
-				omt = 1 - t - step;
-				x = omt * omt * p0[0] + 2 * omt * (t + step) * p1[0] + (t + step) * (t + step) * p2[0];
-				y = omt * omt * p0[1] + 2 * omt * (t + step) * p1[1] + (t + step) * (t + step) * p2[1];
-				vertices.push_back(x);
-				vertices.push_back(y);
+					vertices.push_back(A[0]);
+					vertices.push_back(A[1]);
+					vertices.push_back(x);
+					vertices.push_back(y);
+
+					t += step;
+					t1 = 1 - t;
+					t2 = 3 * t * t1 * t1;
+					t3 = 3 * t * t * t1;
+					t4 = t * t * t;
+					t1 = t1 * t1 * t1;
+					t -= step;
+
+					x = t1 * p0[0] + t2 * p1[0] + t3 * p2[0] + t4 * p3[0];
+					y = t1 * p0[1] + t2 * p1[1] + t3 * p2[1] + t4 * p3[1];
+
+
+					vertices.push_back(x);
+					vertices.push_back(y);
+				}
 			}
 		}
+		else {
+			for (int i = 0; i < M; ++i) {
+				
+				int prev_ind = (i - 1 + M) % M;
+				int next_ind = (i + 1) % M;
+				float* A = valid_vor_verts[u.first].data();
+				float* B = valid_vor_verts[u.second.first[prev_ind]].data();
+				float* C = valid_vor_verts[u.second.first[next_ind]].data();
+				float* D = valid_vor_verts[u.second.first[i]].data();
+
+
+				float* p0_r = &u.second.second[prev_ind][6];
+				float* p1_r = &u.second.second[i][0];
+				float* p2_r = &u.second.second[i][2];
+
+				if (0) {
+					vertices.push_back(p0_r[0]);
+					vertices.push_back(p0_r[1]);
+					vertices.push_back(p1_r[0]);
+					vertices.push_back(p1_r[1]);
+
+					vertices.push_back(p1_r[0]);
+					vertices.push_back(p1_r[1]);
+					vertices.push_back(p2_r[0]);
+					vertices.push_back(p2_r[1]);
+				}
+
+				if (line_mode)
+				{
+
+					float step = 0.1;
+
+					float w[3] = { 1, 1, 1 };
+					float sum_w = 0;
+					
+					for (float t = 0; t <= 1.f - step + 0.001f; t += step) {
+						float omt = 1 - t;
+						sum_w = omt* omt* w[0] + 2 * omt * t * w[1] + t * t * w[2];
+						float x = (omt * omt * p0_r[0] * w[0] + 2 * omt * t * p1_r[0] * w[1] + t * t * p2_r[0] * w[2]) / sum_w;
+						float y = (omt * omt * p0_r[1] * w[0] + 2 * omt * t * p1_r[1] * w[1] + t * t * p2_r[1] * w[2]) / sum_w;
+						vertices.push_back(x);
+						vertices.push_back(y);
+
+						t += step;
+						omt = 1 - t;
+						sum_w = omt* omt* w[0] + 2 * omt * t * w[1] + t * t * w[2];
+						
+						x = (omt * omt * p0_r[0] * w[0] + 2 * omt * t * p1_r[0] * w[1] + t * t * p2_r[0] * w[2]) / sum_w;
+						y = (omt * omt * p0_r[1] * w[0] + 2 * omt * t * p1_r[1] * w[1] + t * t * p2_r[1] * w[2]) / sum_w;
+
+						t -= step;
+
+						vertices.push_back(x);
+						vertices.push_back(y);
+					}
+				}
+				else {
+					
+					float L[3] = { A[1] - p1_r[1], p1_r[0] - A[0], (A[0] * p1_r[1] - p1_r[0] * A[1]) };
+					
+					float t1 = get_line_and_bezier_intersection_t(L, p0_r, p1_r, p2_r);
+					
+
+					float* p0_l = &u.second.second[next_ind][2];
+					float* p1_l = &u.second.second[i][4];
+					float* p2_l = &u.second.second[i][6];
+
+					L[0] = A[1] - p1_l[1] ;
+					L[1] = p1_l[0] - A[0];
+					L[2] = (A[0] * p1_l[1] - p1_l[0] * A[1]);
+
+					float t2 = get_line_and_bezier_intersection_t(L, p0_l, p1_l, p2_l);
+					{
+						const int STEPS_COUNT = 10;
+						float step1 = (1.f - t1) / STEPS_COUNT;
+						float step2 = (1.f - t2) / STEPS_COUNT;
+						if (M > 2) {
+							float t = t1;
+							float x1 = (1 - t) * (1 - t) * p0_r[0] + 2 * (1 - t) * t * p1_r[0] + t * t * p2_r[0];
+							float y1 = (1 - t) * (1 - t) * p0_r[1] + 2 * (1 - t) * t * p1_r[1] + t * t * p2_r[1];
+
+							t = t2;
+							float x2 = (1 - t) * (1 - t) * p0_l[0] + 2 * (1 - t) * t * p1_l[0] + t * t * p2_l[0];
+							float y2 = (1 - t) * (1 - t) * p0_l[1] + 2 * (1 - t) * t * p1_l[1] + t * t * p2_l[1];
+
+							vertices.push_back(A[0]);
+							vertices.push_back(A[1]);
+							vertices.push_back(x1);
+							vertices.push_back(y1);
+							vertices.push_back(x2);
+							vertices.push_back(y2);
+						}
+						for (int i = 0; i < STEPS_COUNT; ++i) {
+							float t = t1 + step1 * i;
+
+							float x1 = (1 - t) * (1 - t) * p0_r[0] + 2 * (1 - t) * t * p1_r[0] + t * t * p2_r[0];
+							float y1 = (1 - t) * (1 - t) * p0_r[1] + 2 * (1 - t) * t * p1_r[1] + t * t * p2_r[1];
+
+							t = t2 + step2 * i;
+							float x2 = (1 - t) * (1 - t) * p0_l[0] + 2 * (1 - t) * t * p1_l[0] + t * t * p2_l[0];
+							float y2 = (1 - t) * (1 - t) * p0_l[1] + 2 * (1 - t) * t * p1_l[1] + t * t * p2_l[1];
+
+							t = t1 + step1 * (i + 1);
+							float x3 = (1 - t) * (1 - t) * p0_r[0] + 2 * (1 - t) * t * p1_r[0] + t * t * p2_r[0];
+							float y3 = (1 - t) * (1 - t) * p0_r[1] + 2 * (1 - t) * t * p1_r[1] + t * t * p2_r[1];
+
+							t = t2 + step2 * (i + 1);
+							float x4 = (1 - t) * (1 - t) * p0_l[0] + 2 * (1 - t) * t * p1_l[0] + t * t * p2_l[0];
+							float y4 = (1 - t) * (1 - t) * p0_l[1] + 2 * (1 - t) * t * p1_l[1] + t * t * p2_l[1];
+
+							vertices.push_back(x1);
+							vertices.push_back(y1);
+							vertices.push_back(x3);
+							vertices.push_back(y3);
+							vertices.push_back(x4);
+							vertices.push_back(y4);
+
+							vertices.push_back(x1);
+							vertices.push_back(y1);
+							vertices.push_back(x4);
+							vertices.push_back(y4);
+							vertices.push_back(x2);
+							vertices.push_back(y2);
+						}
+					}
+
+				}
+			}
+		}
+		
 	}
 #endif
 }

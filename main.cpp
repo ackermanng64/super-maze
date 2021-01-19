@@ -107,7 +107,7 @@ vector<float> test_delaunay3(vector<sf::Vertex>& triangle_vertices) {
         sites.push_back((rand() % 2560) / 2559.f);
     }
 
-    auto pg = poission_disc_sampling(1, 1, 0.035);
+    auto pg = poission_disc_sampling(1, 1, 0.045);
     if(1)
     for (auto& u : pg) {
         for (auto& v : u) {
@@ -281,7 +281,7 @@ int main()
         1608464112, // render problem2
     };
     time_t seed = time(NULL);
-    srand(1610968985);
+    srand(seed);
     printf("seed: %ld\n", seed);
     sf::ContextSettings settings;
     settings.antialiasingLevel = 8;
@@ -290,7 +290,7 @@ int main()
     int hmargin = 10;
     int vmargin = 10;
     sf::RenderWindow window(sf::VideoMode(window_width, window_height), "voronoi", sf::Style::Default, settings);
-    window.setFramerateLimit(60);
+    //window.setFramerateLimit(60);
 
     sf::CircleShape shape(5);
     sf::CircleShape shape_target(3.5);
@@ -510,19 +510,6 @@ int main()
                         sf::Vertex v;
                         v.color = sf::Color::Blue;
 
-                        /*float step = 0.1;
-                        for (float t = 0; t <= 1.f - step + 0.001f; t += step) {
-                            float omt = 1 - t;
-                            v.position.x = omt * omt * centroid1[0] + 2 * omt * t * mid_cpt[0] + t * t * centroid2[0];
-                            v.position.y = omt * omt * centroid1[1] + 2 * omt * t * mid_cpt[1] + t * t * centroid2[1];
-                            path_to_nbrs_data.push_back(v);
-
-                            omt = 1 - t - step;
-                            v.position.x = omt * omt * centroid1[0] + 2 * omt * (t + step) * mid_cpt[0] + (t + step) * (t + step) * centroid2[0];
-                            v.position.y = omt * omt * centroid1[1] + 2 * omt * (t + step) * mid_cpt[1] + (t + step) * (t + step) * centroid2[1];
-                            path_to_nbrs_data.push_back(v);
-                        }*/
-
                         float step = 0.05;
                         for (float t = 0; t <= 1.f - step + 0.001f; t += step) {
                             float omt = 1 - t;
@@ -561,6 +548,11 @@ int main()
     bool is_target_reached = true;
     float move_speed = 75;
     float t_rem;
+
+    int fps = 0;
+    int frame_count = 0;
+    float accum_time = 0;
+
     while (window.isOpen())
     {
         sf::Event event;
@@ -702,6 +694,15 @@ int main()
             }
         }
         float dt = clock.restart().asMicroseconds() / 1e6;
+
+        if (accum_time >= 1) {
+            fps = frame_count;
+            accum_time = 0;
+            frame_count = 0;
+        }
+        accum_time += dt;
+        ++frame_count;
+
         if (pld.mv_path_len > 1) {
             
             if (t_accum == 1) {
@@ -743,7 +744,7 @@ int main()
             window.draw(triangles_vertices.data(), triangles_vertices.size(), sf::Lines);
         }
         if (display_vor) {
-            window.draw(voronoi_edges.data(), voronoi_edges.size(), sf::Lines);
+            window.draw(voronoi_edges.data(), voronoi_edges.size(), sf::Triangles);
         }
         if (display_cull_polygon) {
             window.draw(cull_polygon_verts.data(), cull_polygon_verts.size(), sf::Lines);
@@ -853,6 +854,11 @@ int main()
                 shape_target.setPosition(sf::Vector2f(x - 3.5, y - 3.5));
                 window.draw(shape_target);
             }
+        }
+        {
+            text.setPosition(10, 10);
+            text.setString(to_string(fps));
+            window.draw(text);
         }
         
         window.display();
