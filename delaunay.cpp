@@ -212,7 +212,6 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 				if (q != edge_map.end()) {
 					auto& u = *q;
 					if (u.second.a[0] == 1) {
-						//printf("e: (%d, %d), add: (%d)\n", u.first.a, u.first.b, i);
 						u.second.a[0] = 0;
 						if (u.second.a[1] == -4) {
 							u.second.a[1] = i;
@@ -224,11 +223,13 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 						t.a[0] = u.first.a;
 						t.a[1] = u.first.b;
 						t.a[2] = i;
-						if (point_orientation(&sites[2 * u.first.a], &sites[2 * u.first.b], &sites[2 * i]) < 0) {
+						
+						// TODO: why need this?
+						/*if (point_orientation(&sites[2 * u.first.a], &sites[2 * u.first.b], &sites[2 * i]) < 0) {
 							t.a[0] = u.first.a;
 							t.a[1] = i;
 							t.a[2] = u.first.b;
-						}
+						}*/
 
 						dte.set(i, u.first.a);
 						auto res = edge_map.find(dte);
@@ -252,9 +253,7 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 					}
 				}
 			}
-			
 		}
-
 	}
 
 	float min_len_threshold = 0.01;
@@ -660,7 +659,7 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 			it->second.first.push_back(p2);
 		}
 		it = pmap.find(p2);
-		if (it == pmap.end()) {
+		if (it == pmap.end()) { 
 			pmap.insert(it, { p2, {{p1}, {}} });
 		}
 		else {
@@ -679,7 +678,6 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 			start_ind = u.first.a;
 			nbrdata[u.first.a].push_back(u.first.b);
 			nbrdata[u.first.b].push_back(u.first.a);
-			dte.set(u.first.a, u.first.b);
 		}
 		
 	}
@@ -711,23 +709,24 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 		}
 	}
 
-	//std::set<sorted_tri_pair, sorted_tri_pair_comparator> removed_n_edges;
 	std::vector<bool> is_visited(N, false);
 	std::vector<int> cells;
 	
 	cells.push_back(start_ind);
 	is_visited[start_ind] = true;
 	while (1 && !cells.empty()) {
-		int ind = cells.size() - 1;
-		if (rand() % 2 == 1) {
+		int ind;
+		ind = cells.size() - 1;
+		//if (rand() % 2 == 1) 
+		{
 			ind = rand() % cells.size();
 		}
 		int c = cells[ind];
-		cells[ind] = cells.back();
-		cells.erase(cells.end() - 1);
+		bool had_unvis_nbr = false;
 		for (int i = 0; i < nbrdata[c].size(); ++i) {
 			if (!is_visited[nbrdata[c][i]]) {
-				cells.push_back(c);
+				had_unvis_nbr = true;
+				//cells.push_back(c);
 				is_visited[nbrdata[c][i]] = true;
 				cells.push_back(nbrdata[c][i]);
 
@@ -771,11 +770,12 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 				break;
 			}
 		}
+		if (!had_unvis_nbr) {
+			cells.erase(cells.begin() + ind);
+		}
 	}
 	//start_ind = 1303;
 	printf("start ind: %d\n", start_ind);
-
-	float hfw = 0.0065;
 
 	for (auto& u : pmap) {
 		float* center = valid_vor_verts[u.first].data();
@@ -888,26 +888,18 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 		{
 			auto& nlist = u.second.first;
 			double sa = 0;
-			for (int i = 0; i < M - 1; ++i) {
+			for (int i = 0; i < M; ++i) {
 				float* p0 = valid_vor_verts[nlist[i]].data();
-				float* p1 = valid_vor_verts[nlist[i + 1]].data();
-				sa += (p1[0] - p0[0]) * (p1[1] + p0[1]);
+				float* p1 = valid_vor_verts[nlist[(i + 1) % M]].data();
+				sa += p0[0] * p1[1] - p1[0] * p0[1];
 			}
-			float* p0 = valid_vor_verts[nlist[0]].data();
-			float* p1 = valid_vor_verts[nlist.back()].data();
-			sa += (p0[0] - p1[0]) * (p1[1] + p0[1]);
 
-			if (sa > 0) {
+			if (sa < 0) {
 				for (auto li = nlist.begin(), ri = nlist.end() - 1; li <= ri; ++li, --ri) {
 					auto tp = *li;
 					*li = *ri;
 					*ri = tp;
 				}
-
-				//printf("before CW\n");
-			}
-			else {
-				//printf("before CCW\n");
 			}
 		}
 	}
@@ -938,7 +930,9 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 		out[0] *= hfw * 2.2 / l1;
 		out[1] *= hfw * 2.2 / l1;*/
 	};
-		 
+
+	bool line_mode = true;
+	float hfw = 0.0055;
 	std::set<sorted_tri_pair, sorted_tri_pair_comparator> done_set;
 	sorted_tri_pair stp;
 #if 0
@@ -1201,13 +1195,14 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 			float d = dot_prd(q1, q2);
 			float th = 0.99;
 			if (d * d > th * th * sqr_len(q1) * sqr_len(q2)) {
-				u1[0] = p1[1] - p2[1];
-				u1[1] = p2[0] - p1[0];
+				u1[0] = p2[1] - p1[1];
+				u1[1] = p1[0] - p2[0];
 				float d = sqrt(sqr_len(u1));
 				u1[0] *= hfw / d;
 				u1[1] *= hfw / d;
 				u2[0] = -u1[0];
 				u2[1] = -u1[1];
+				return;
 			}
 			get_bisector_vec_with_mag(p1, p1prev, p2, hfw, u1);
 			q1[0] = p1[0] + u1[0];
@@ -1237,7 +1232,7 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 		}
 	};
 	
-	bool line_mode = false;
+	
 
 	for (auto& u : pmap) {
 		float* pp = valid_vor_verts[u.first].data();
@@ -1285,15 +1280,6 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 						get_vs2(tt, pp, valid_vor_verts[mlist[(j - 1 + M2) % M2]].data(), valid_vor_verts[mlist[(j + 1) % M2]].data(), hfw, v1, v2);
 					}
 
-					//float w1 = 0.5, w2 = 1 - w1;
-					float lu1 = sqrt(sqr_len(u1));
-					float lu2 = sqrt(sqr_len(u2));
-					float lv1 = sqrt(sqr_len(v1));
-					float lv2 = sqrt(sqr_len(v2));
-					float w1 = lv2 / (lu1 + lv2);
-					float w2 = 1 - w1;
-					float w3 = lv1 / (lu2 + lv1);
-					float w4 = 1 - w3;
 					
 					float l = hfw / sqrt(sqr_dist(pp, tt));
 					float pu1[2] = { (tt[1] - pp[1]) * l, (pp[0] - tt[0]) * l };
@@ -1302,29 +1288,21 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 					float mid[2] = { (pp[0] + tt[0]) / 2 , (pp[1] + tt[1]) / 2 };
 					u.second.second[i].push_back(u1[0] + pp[0]);
 					u.second.second[i].push_back(u1[1] + pp[1]);
-					//u.second.second[i].push_back(u1[0] * w1 + v2[0] * w2 + mid[0]);
-					//u.second.second[i].push_back(u1[1] * w1 + v2[1] * w2 + mid[1]);
 					u.second.second[i].push_back(pu1[0] + mid[0]);
 					u.second.second[i].push_back(pu1[1] + mid[1]);
 
 					u.second.second[i].push_back(u2[0] + pp[0]);
 					u.second.second[i].push_back(u2[1] + pp[1]);
-					//u.second.second[i].push_back(u2[0] * w3 + v1[0] * w4 + mid[0]);
-					//u.second.second[i].push_back(u2[1] * w3 + v1[1] * w4 + mid[1]);
 					u.second.second[i].push_back(pu2[0] + mid[0]);
 					u.second.second[i].push_back(pu2[1] + mid[1]);
 
 					v.second[j].push_back(v1[0] + tt[0]);
 					v.second[j].push_back(v1[1] + tt[1]);
-					//v.second[j].push_back(v1[0] * w4 + u2[0] * w3 + mid[0]);
-					//v.second[j].push_back(v1[1] * w4 + u2[1] * w3 + mid[1]);
 					v.second[j].push_back(pu2[0] + mid[0]);
 					v.second[j].push_back(pu2[1] + mid[1]);
 
 					v.second[j].push_back(v2[0] + tt[0]);
 					v.second[j].push_back(v2[1] + tt[1]);
-					//v.second[j].push_back(v2[0] * w2 + u1[0] * w1 + mid[0]);
-					//v.second[j].push_back(v2[1] * w2 + u1[1] * w1 + mid[1]);
 					v.second[j].push_back(pu1[0] + mid[0]);
 					v.second[j].push_back(pu1[1] + mid[1]);
 
@@ -1353,6 +1331,13 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 						vertices.push_back(tt[1]);
 						vertices.push_back(tt[0] + v2[0]);
 						vertices.push_back(tt[1] + v2[1]);
+
+						if (0) {
+							vertices.push_back(pp[0] + u1[0]);
+							vertices.push_back(pp[1] + u1[1]);
+							vertices.push_back(tt[0] + v2[0]);
+							vertices.push_back(tt[1] + v2[1]);
+						}
 					}
 					else if (0) {
 						vertices.push_back(pp[0] + u1[0]);
@@ -1402,7 +1387,7 @@ void t_voronoi(float* points, int N, std::vector<float>& vertices, float* border
 		}
 		return t;
 	};
-
+	if(1)
 	for (auto& u : pmap) {
 		float* pp = valid_vor_verts[u.first].data();
 		auto& nlist = u.second.first;

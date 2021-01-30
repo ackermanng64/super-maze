@@ -158,7 +158,10 @@ void test_voronoi1(vector<float>& sites, vector<sf::Vertex>& edges, vector<float
     printf("site count: %lld\n", (sites.size() / 2));
     sf::Vertex v;
     v.color = sf::Color::White;
+    //v.color = sf::Color(238, 220, 130);
     for (int i = 0; i < vertices.size(); i += 2) {
+        //if(i % 5000 == 0)
+          //  v.color = sf::Color(rand()%256, rand() % 256, rand() % 256);
         v.position.x = vertices[i];
         v.position.y = vertices[i + 1];
         edges.push_back(v);
@@ -281,7 +284,7 @@ int main()
         1608464112, // render problem2
     };
     time_t seed = time(NULL);
-    srand(seed);
+    srand(1611986639);
     printf("seed: %ld\n", seed);
     sf::ContextSettings settings;
     settings.antialiasingLevel = 8;
@@ -546,7 +549,7 @@ int main()
     float t_accum;
     float prev_t_accum;
     bool is_target_reached = true;
-    float move_speed = 75;
+    float move_speed = 100;
     float t_rem;
 
     int fps = 0;
@@ -739,12 +742,14 @@ int main()
             }
         }
 
+        //window.clear(sf::Color(238, 220, 130));
         window.clear();
+        //window.clear(sf::Color::White);
         if (display_del) {
             window.draw(triangles_vertices.data(), triangles_vertices.size(), sf::Lines);
         }
         if (display_vor) {
-            window.draw(voronoi_edges.data(), voronoi_edges.size(), sf::Triangles);
+            window.draw(voronoi_edges.data(), voronoi_edges.size(), sf::Lines);
         }
         if (display_cull_polygon) {
             window.draw(cull_polygon_verts.data(), cull_polygon_verts.size(), sf::Lines);
